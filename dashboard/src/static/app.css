@@ -23,6 +23,20 @@
   }
 }
 
+/* Page tabs (GOV.UK button component) ------------------------------- */
+
+.wf-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 24px;
+  align-items: flex-start;
+}
+
+.wf-tabs .govuk-button {
+  margin-bottom: 0;
+}
+
 /* Generic helpers ---------------------------------------------------- */
 
 .wf-muted {

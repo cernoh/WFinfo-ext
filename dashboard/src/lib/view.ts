@@ -86,13 +86,22 @@ const NAV: { key: NavKey; href: string; label: string }[] = [
   { key: "wfmarket", href: "/wfmarket", label: "WFMarket" },
 ];
 
-function shell(title: string, active: NavKey, content: string): string {
-  const navItems = NAV.map((n) =>
-    `<li class="govuk-header__navigation-item${
-      n.key === active ? " govuk-header__navigation-item--active" : ""
-    }"><a class="govuk-header__link" href="${n.href}">${n.label}</a></li>`
-  ).join("\n");
+/** Tab row: GOV.UK button-component links; the current page is the default
+ *  (primary) button, the others secondary. Exactly one primary button per
+ *  page, per GOV.UK button guidance. */
+function tabsHtml(active: NavKey): string {
+  const buttons = NAV.map((n) => {
+    const isActive = n.key === active;
+    return `<a href="${n.href}" class="govuk-button${
+      isActive ? "" : " govuk-button--secondary"
+    }" role="button" draggable="false" data-module="govuk-button"${
+      isActive ? ' aria-current="page"' : ""
+    }>${n.label}</a>`;
+  }).join("\n");
+  return `<div class="wf-tabs" aria-label="Pages">\n${buttons}\n</div>`;
+}
 
+function shell(title: string, active: NavKey, content: string): string {
   return `<!DOCTYPE html>
 <html lang="en" class="govuk-template">
 <head>
@@ -118,12 +127,6 @@ function shell(title: string, active: NavKey, content: string): string {
                alt="Warframe Info — an independent digital service" width="183" height="100">
         </a>
       </div>
-      <nav id="wf-navigation" class="govuk-header__navigation" aria-label="Top level navigation">
-        <button type="button" class="govuk-header__menu-button govuk-js-header-toggle" aria-controls="wf-navigation-list" aria-label="Show or hide menu" hidden>Menu</button>
-        <ul id="wf-navigation-list" class="govuk-header__navigation-list">
-${navItems}
-        </ul>
-      </nav>
     </div>
   </header>
   <div class="govuk-width-container">
@@ -136,6 +139,7 @@ ${navItems}
   </div>
   <div class="govuk-width-container">
     <main class="govuk-main-wrapper" id="main-content" role="main">
+${tabsHtml(active)}
 ${content}
     </main>
   </div>
