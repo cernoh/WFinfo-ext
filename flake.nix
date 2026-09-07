@@ -20,16 +20,18 @@
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
 
-      # Note: access pkgs through legacyPackages.<system>; `import nixpkgs { inherit system; }`
-      # does not evaluate in this environment.
+      # Idiom (b): forAllSystems hands each consumer the imported pkgs set, so
+      # consumers must name the parameter `pkgs` and must NOT re-import nixpkgs
+      # (passing the pkgs set as `system` breaks evaluation).
       forAllSystems = f:
         nixpkgs.lib.genAttrs systems (system: f (nixpkgs.legacyPackages.${system}));
 
       # Native libraries for the Tesseract .NET wrapper and System.Drawing.
       #  - charlesw/tesseract dlopens exact sonames: libtesseract50.so +
       #    libleptonica-1.82.0.so (nixpkgs builds versioned libraries).
-      #  - System.Drawing.Common 9 on Unix probes Windows-ish names
-      #    (gdiplus.dll.so, libgdiplus.dll.so, ...) before failing.
+      #  - libgdiplus aliases below are a compatibility net: the project pins
+      #    System.Drawing.Common 6.0.0 (plain libgdiplus via LD path), but some
+      #    loaders probe Windows-style names (gdiplus.dll.so, ...).
       tesseractNative = pkgs: pkgs.runCommand "wfinfo-tesseract-native" { } ''
         mkdir -p $out/lib/x64 $out/lib/x86
         tess=$(find ${pkgs.tesseract5}/lib -maxdepth 1 -name 'libtesseract.so.*' | sort | tail -n1)
