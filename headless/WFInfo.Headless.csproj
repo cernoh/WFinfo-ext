@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>WFInfo</RootNamespace>
+    <AssemblyName>WFInfo.Headless</AssemblyName>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <EnableDefaultEmbeddedResourceItems>false</EnableDefaultEmbeddedResourceItems>
+    <Nullable>disable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <!-- Legacy code uses BinaryFormatter and Win32-only APIs behind runtime guards. -->
+    <NoWarn>$(NoWarn);SYSLIB0011;CA1416;CS0649;CS0169;CS0067</NoWarn>
+    <StartupObject>WFInfo.HeadlessProgram</StartupObject>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <!-- System.Drawing.Common >= 7 throws PlatformNotSupportedException on Linux
+         even with EnableUnixSupport (opt-in removed upstream); 6.0.0 is the last
+         line with libgdiplus support and loads fine from a net9.0 app. -->
+    <PackageReference Include="System.Drawing.Common" Version="6.0.0" />
+    <PackageReference Include="Tesseract" Version="5.2.0" />
+  </ItemGroup>
+
+  <!--
+    Headless runner: links the REAL WFInfo core sources (no copies, no mocks).
+    The .NET Framework / WPF / WinForms / Win32 surfaces live in files that are
+    intentionally NOT linked here; their compile-time shape is provided by
+    headless/Platform/*.cs so the shared sources type-check on net9.0/Linux.
+  -->
+  <ItemGroup>
+    <Compile Include="..\WFInfo\Ocr.cs" Link="Shared\Ocr.cs" />
+    <Compile Include="..\WFInfo\Data.cs" Link="Shared\Data.cs" />
+    <Compile Include="..\WFInfo\LanguageProcessing\*.cs" Link="Shared\LanguageProcessing\%(Filename)%(Extension)" />
+    <Compile Include="..\WFInfo\Services\TesseractService.cs" Link="Shared\TesseractService.cs" />
+    <Compile Include="..\WFInfo\Services\HDRDetection\IHDRDetectorService.cs" Link="Shared\IHDRDetectorService.cs" />
+    <Compile Include="..\WFInfo\Services\WindowInfo\IWindowInfoService.cs" Link="Shared\IWindowInfoService.cs" />
+    <Compile Include="..\WFInfo\Services\WarframeProcess\IProcessFinder.cs" Link="Shared\IProcessFinder.cs" />
+    <Compile Include="..\WFInfo\Services\Screenshot\IScreenshotService.cs" Link="Shared\IScreenshotService.cs" />
+    <Compile Include="..\WFInfo\Settings\ApplicationSettings.cs" Link="Shared\ApplicationSettings.cs" />
+    <Compile Include="..\WFInfo\Settings\IReadOnlyApplicationSettings.cs" Link="Shared\IReadOnlyApplicationSettings.cs" />
+    <Compile Include="..\WFInfo\Tests\OCRTestRunner.cs" Link="Shared\OCRTestRunner.cs" />
+    <Compile Include="..\WFInfo\Tests\TestModels.cs" Link="Shared\TestModels.cs" />
+    <Compile Include="..\WFInfo\Tests\ThemeTestRunner.cs" Link="Shared\ThemeTestRunner.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="Program.cs" />
+    <Compile Include="Platform\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <RuntimeHostConfigurationOption Include="System.Drawing.EnableUnixSupport" Value="true" />
+  </ItemGroup>
+
+</Project>

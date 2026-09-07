@@ -1,41 +1,99 @@
-# WFInfo — Agent Guide
+# WFInfo — Agent Guide (DOX root)
 
-Always use `caveman` skill for all communication (token efficiency). Activate it immediately.
+- DOX is highly performant AGENTS.md hierarchy installed here.
+- Agent must follow DOX instructions across any edits.
+- This repository is a fork (origin: `git@github.com:cernoh/WFinfo-ext.git`); the
+  Windows app is WFInfo, a Warframe companion (OCR + market prices + overlay).
 
-WPF (.NET Framework 4.8) desktop app for Warframe. OCR + market prices.
+## Core Contract
 
-## Build & Run
-- `dotnet build -c Release` (output: `bin/Release/net48/WFInfo.exe`)
-- Launch with no args for normal UI mode
-- Startup object is `WFInfo.CustomEntrypoint.Main()` (not `App.Main()`)
+- AGENTS.md files are binding work contracts for their subtrees.
+- Work products, source materials, instructions, records, assets, and durable
+  docs must stay understandable from the nearest applicable AGENTS.md plus every
+  parent AGENTS.md above it.
+- No child doc may weaken DOX. The closer a doc is to the work, the more
+  specific and practical it must be.
 
-## Test Framework (headless OCR regression)
-- Triggered automatically when any `.json` arg is passed: `WFInfo.exe map.json [output.json]`
-- `cd tests && run_tests.bat` — locates built `WFInfo.exe` automatically
-- Test data: `tests/data/<name>.json` + `<name>.png` pairs, listed in `tests/map.json`
-- Exit codes: 0=all pass, 1=partial fail, 2=fatal error
-- Real OCR pipeline (no mocks) — first run downloads market data from warframestat.us API
+## Read Before Editing
 
-## Architecture
-- **Entry** → `CustomEntrypoint.Main()` → Tesseract DLL bootstrap → `App.Main()` (WPF)
-- **Dependency Injection** via `Microsoft.Extensions.DependencyInjection` in `Main.cs`
-- **OCR** → `Ocr.cs`: screenshot → `ExtractPartBoxAutomatically` → Tesseract → Levenshtein `GetPartName()`
-- **Data** → `Data.cs`: JSON from `api.warframestat.us/wfinfo/prices`, JWT auth, WebSocket for warframe.market
-- **Auto-mode** → `LogCapture.cs`: reads Warframe `EE.log` via memory-mapped file, triggers on `"Got rewards"`
-- **Screenshots** → dual backend: GDI (fallback) + Windows.Graphics.Capture (Win10+ 2004+)
-- **Languages** → `LanguageProcessing/`: 11 processors (CJK, Cyrillic, Latin, Thai, Turkish, Polish)
+1. Read the root AGENTS.md (this file).
+2. Identify every file or folder you expect to touch.
+3. Walk from the repository root to each target path; read every AGENTS.md found
+   along each route. Re-read the applicable chain in the current session; do not
+   rely on memory.
 
-## Key Tech Stack
-- .NET Framework 4.8, WPF, WinForms interop
-- Tesseract 5.2.0 (native DLLs via Costura.Fody bundling)
-- Newtonsoft.Json, SharpDX.Direct3D11, AutoUpdater.NET
+## Purpose
 
-## Quirks & Gotchas
-- `AllowUnsafeBlocks=true` — Tesseract interop
-- Costura merges `Tesseract50.dll`, `leptonica-1.82.0.dll` into the exe
-- Tesseract DLLs downloaded from GitHub `WFCD/WFinfo/libs` branch on first run to `%APPDATA%\WFInfo\tesseract5\`
-- Release build auto-generates `update.xml` + `WFInfo.zip` via MSBuild targets
-- Debug logs at `%APPDATA%\WFInfo\debug.log` (async queue, flushed every 250ms)
-- DPI awareness: PerMonitorV2 (app.manifest)
-- No CI workflows present
-- Dependabot: NuGet weekly
+WFInfo scans Warframe fissure reward screens and the prime inventory with OCR,
+matches part names against market data, and displays plat/ducat values. The
+Windows release is `.NET Framework 4.8` + WPF/WinForms and is Windows-only.
+
+Since 2026 the repo also carries a **Linux-native headless core**: the
+platform-neutral OCR/theme/market-data/test code (linked, not copied) builds and
+runs as a .NET 9 console runner via the Nix flake in `flake.nix`. Windows UI and
+Win32 surfaces are NOT portable and stay Windows-only.
+
+## Ownership
+
+- `WFInfo/` — Windows desktop app AND the shared core sources (Ocr.cs, Data.cs,
+  LanguageProcessing/, Services/, Settings/, Tests/). Child: `WFInfo/AGENTS.md`.
+- `headless/` — Linux-native runner project + platform seams. Child: `headless/AGENTS.md`.
+- `tests/` — OCR/theme regression framework docs + scenario data. Child: `tests/AGENTS.md`.
+- `docs/` — GitHub Pages website (has CNAME/index.html; do not drop engineering
+  docs into it), owned at root.
+- `flake.nix`, `.gitignore`, README files — root-owned.
+
+## Local Contracts
+
+- Remote-repo workflow (origin exists): never edit `master` directly; use a
+  feature branch + PR. GitHub **issues are disabled** on this remote — PRs cannot
+  be issue-linked here; write a complete PR body instead and tag the PR title
+  with `(#<number>)`.
+- Windows app build/run: `dotnet build WFInfo.sln -c Release` (Windows + Visual
+  Studio / .NET Framework 4.8 tooling). Startup object:
+  `WFInfo.CustomEntrypoint.Main` — a `.json`/`--test` argument redirects to the
+  headless OCR test runner; `--theme-debug <folder> [uiScale]` runs the theme
+  detector over PNGs.
+- Cross-platform guardrails for shared sources:
+  - Path building MUST use `Path.Combine` (backslash string concat breaks Linux).
+  - Do NOT add new WPF/WinForms/Win32 or `System.Windows.*` references to core
+    logic files (Ocr.cs, Data.cs, LanguageProcessing, Services, Settings,
+    Tests). Interfaces must not leak WinForms types.
+  - Do NOT add `#if` platform forks in shared code. If a Windows-only type must
+    be referenced from shared code, the headless project supplies a compile-time
+    shape in `headless/Platform/` (see its AGENTS.md).
+- `AGENTS.md`, READMEs and docs stay in Simplified Technical English (STE);
+  keep them short and operational.
+
+## Verification (current)
+
+Run inside `nix develop`:
+
+- `dotnet build headless/WFInfo.Headless.csproj` — must compile clean.
+- `dotnet run --project headless -- --selfcheck` — native OCR end-to-end.
+- `dotnet run --project headless -- --test tests/map.json out.json` — OCR suite.
+- `dotnet run --project headless -- --theme-test <folder>` — theme runner.
+
+The Windows build cannot be verified on Linux; keep shared-code edits
+Windows-equivalent (Path.Combine semantics) and compile-check them here.
+
+## Closeout
+
+1. Re-check changed paths against the DOX chain.
+2. Update nearest owning docs and any affected parents/children; refresh every
+   affected Child DOX Index; delete stale notes.
+3. Run existing verification relevant to the change.
+
+## User Preferences
+
+- Final reports in plain concise prose; evidence from real runs.
+- No cheerleading; correctness first, then maintainability.
+
+## Child DOX Index
+
+- `WFInfo/AGENTS.md` — Windows app + shared core: architecture, entry flow,
+  test-mode dispatch, portability rules.
+- `headless/AGENTS.md` — Linux runner: linked-source discipline, platform seams,
+  env vars, package pins.
+- `tests/AGENTS.md` — OCR/theme regression framework: scenario contract,
+  data layout, known gaps.

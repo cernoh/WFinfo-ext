@@ -50,6 +50,18 @@ If no output file is specified, results go to `test_results_<timestamp>.json`.
 ### 3. Check results
 The runner prints a summary to stdout and writes detailed JSON to the output file.
 
+### Linux
+
+On Linux the same suite runs natively through the Nix flake (the runner links the
+real WFInfo core sources; no Windows needed):
+
+```bash
+nix develop
+dotnet run --project headless -- --test map.json results.json
+```
+
+See `../headless/README.md` for the full CLI (`--selfcheck`, `--theme-test`).
+
 ## Test Spec Format (JSON)
 
 Each test scenario JSON file:

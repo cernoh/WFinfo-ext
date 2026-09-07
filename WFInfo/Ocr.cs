@@ -55,7 +55,7 @@ namespace WFInfo
 
     class OCR
     {
-        private static readonly string applicationDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + @"\WFInfo";
+        private static readonly string applicationDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WFInfo");
 
         #region variabels and sizzle
 
@@ -186,7 +186,7 @@ namespace WFInfo
             IWindowInfoService window, IHDRDetectorService hdrDetector, GdiScreenshotService gdiScreenshot, WindowsCaptureScreenshotService windowsScreenshot = null,
             IProcessFinder process = null)
         {
-            Directory.CreateDirectory(Main.AppPath + @"\Debug");
+            Directory.CreateDirectory(Path.Combine(Main.AppPath, "Debug"));
             _tesseractService = tesseractService;
             _soundPlayer = soundPlayer;
             _settings = settings;
@@ -485,13 +485,13 @@ namespace WFInfo
             }
 
 
-            (new DirectoryInfo(Main.AppPath + @"\Debug\")).GetFiles()
+            (new DirectoryInfo(Path.Combine(Main.AppPath, "Debug"))).GetFiles()
                 .Where(f => f.CreationTime < DateTime.Now.AddHours(-1 * _settings.ImageRetentionTime))
                 .ToList().ForEach(f => f.Delete());
 
             if (partialScreenshot != null)
             {
-                partialScreenshot.Save(Main.AppPath + @"\Debug\PartBox_" + timestamp + ".png");
+                partialScreenshot.Save(Path.Combine(Main.AppPath, "Debug", "PartBox_" + timestamp + ".png"));
                 partialScreenshot.Dispose();
                 partialScreenshot = null;
             }
@@ -719,7 +719,7 @@ namespace WFInfo
                     try
                     {
                         string ts = DateTime.UtcNow.ToString("yyyy-MM-dd HH-mm-ssffffff", Main.culture);
-                        string dir = Main.AppPath + @"\Debug";
+                        string dir = Path.Combine(Main.AppPath, "Debug");
                         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
                         string fname = $"ThemeScanArea_{ts}.png";
                         using (Bitmap dbg = image.Clone(new Rectangle(0, 0, image.Width, image.Height), image.PixelFormat))
@@ -740,7 +740,7 @@ namespace WFInfo
                                 g.DrawString($"Legacy Trapezoid  theme={active}  score={max:F2}",
                                     new Font(FontFamily.GenericMonospace, 10), Brushes.Chartreuse, 10, 10);
                             }
-                            dbg.Save(dir + @"\" + fname);
+                            dbg.Save(Path.Combine(dir, fname));
                         }
                         Main.AddLog($"ThemeScanArea (legacy trapezoid): {fname}");
                     }
@@ -866,7 +866,7 @@ namespace WFInfo
                         {
                             g.DrawLine(pen, dx, dy1, dx, dy2);
                         }
-                        string dir = Main.AppPath + @"\Debug";
+                        string dir = Path.Combine(Main.AppPath, "Debug");
                         if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
                         string fname = $"ThemeScanArea_{ts}.png";
                         dbg.Save(dir + @"\" + fname);
@@ -1013,9 +1013,9 @@ namespace WFInfo
             }
 
             if (_settings.Debug)
-                snapItImage.Save(Main.AppPath + @"\Debug\SnapItImage_" + timestamp + ".png");
+                snapItImage.Save(Path.Combine(Main.AppPath, "Debug", "SnapItImage_" + timestamp + ".png"));
             Bitmap snapItImageFiltered = ScaleUpAndFilter(snapItImage, theme, out int[] rowHits, out int[] colHits);
-            snapItImageFiltered.Save(Main.AppPath + @"\Debug\SnapItImageFiltered_" + timestamp + ".png");
+            snapItImageFiltered.Save(Path.Combine(Main.AppPath, "Debug", "SnapItImageFiltered_" + timestamp + ".png"));
             double imageScale = (double)snapItImageFiltered.Height / snapItImage.Height;
             // Fallback: detect UI scale from row analysis when config couldn't be read (e.g. GFN)
             // or when ForceLegacyDetection is enabled.
@@ -1034,7 +1034,7 @@ namespace WFInfo
             string csv = string.Empty;
             snapItImage.Dispose();
             snapItImageFiltered.Dispose();
-            if (!File.Exists(applicationDirectory + @"\export " + DateTime.UtcNow.ToString("yyyy-MM-dd", Main.culture) + ".csv") && _settings.SnapitExport)
+            if (!File.Exists(Path.Combine(applicationDirectory, "export " + DateTime.UtcNow.ToString("yyyy-MM-dd", Main.culture) + ".csv")) && _settings.SnapitExport)
                 csv += "ItemName,Plat,Ducats,Volume,Vaulted,Owned,partsDetected" + DateTime.UtcNow.ToString("yyyy-MM-dd", Main.culture) + Environment.NewLine;
             int resultCount = foundParts.Count;
             for (int i = 0; i < foundParts.Count; i++)
@@ -1157,7 +1157,7 @@ namespace WFInfo
             Main.AddLog("Snap-it finished, displayed reward count:" + resultCount + ", time: " + (end - start) + "ms");
             if (_settings.SnapitExport)
             {
-                File.AppendAllText(applicationDirectory + @"\export " + DateTime.UtcNow.ToString("yyyy-MM-dd", Main.culture) + ".csv", csv);
+                File.AppendAllText(Path.Combine(applicationDirectory, "export " + DateTime.UtcNow.ToString("yyyy-MM-dd", Main.culture) + ".csv"), csv);
             }
         }
 
@@ -1660,7 +1660,7 @@ namespace WFInfo
             }
 
             if (_settings.Debug)
-                filteredImage.Save(Main.AppPath + @"\Debug\SnapItImageBounds_" + timestamp + ".png");
+                filteredImage.Save(Path.Combine(Main.AppPath, "Debug", "SnapItImageBounds_" + timestamp + ".png"));
             return results;
         }
 
@@ -2119,7 +2119,7 @@ namespace WFInfo
 
             string timestamp = DateTime.UtcNow.ToString("yyyy-MM-dd HH-mm-ssffffff", Main.culture);
             if (_settings.Debug)
-                fullShot.Save(Main.AppPath + @"\Debug\ProfileImage_" + timestamp + ".png");
+                fullShot.Save(Path.Combine(Main.AppPath, "Debug", "ProfileImage_" + timestamp + ".png"));
             List<InventoryItem> foundParts = FindOwnedItems(fullShot, timestamp, start, watch);
             for (int i = 0; i < foundParts.Count; i++)
             {
@@ -2766,12 +2766,12 @@ namespace WFInfo
                 g.DrawRectangle(Pens.Chartreuse, uidebug);
             }
             if (_settings.Debug && !suppressDebug)
-                fullScreen.Save(Main.AppPath + @"\Debug\BorderScreenshot_" + timestamp + ".png");
+                fullScreen.Save(Path.Combine(Main.AppPath, "Debug", "BorderScreenshot_" + timestamp + ".png"));
 
 
             //postFilter.Save(Main.appPath + @"\Debug\DebugBox1_" + timestamp + ".png");
             if (_settings.Debug && !suppressDebug)
-                preFilter.Save(Main.AppPath + @"\Debug\FullPartArea_" + timestamp + ".png");
+                preFilter.Save(Path.Combine(Main.AppPath, "Debug", "FullPartArea_" + timestamp + ".png"));
             scaling = topFive[4] + 50; //scaling was sometimes going to 50 despite being set to 100, so taking the value from above that seems to be accurate.
 
             scaling /= 100;
@@ -2802,7 +2802,7 @@ namespace WFInfo
             end = watch.ElapsedMilliseconds;
             Main.AddLog("Finished function " + (end - beginning) + "ms");
             if (!suppressDebug)
-                partialScreenshot.Save(Main.AppPath + @"\Debug\PartialScreenshot_" + timestamp + ".png");
+                partialScreenshot.Save(Path.Combine(Main.AppPath, "Debug", "PartialScreenshot_" + timestamp + ".png"));
             return FilterAndSeparatePartsFromPartBox(partialScreenshot, active);
         }
 
@@ -2917,7 +2917,7 @@ namespace WFInfo
                     grD.DrawImage(filtered, destRegion, srcRegion, GraphicsUnit.Pixel);
                 ret.Add(newBox);
                 if (_settings.Debug)
-                    newBox.Save(Main.AppPath + @"\Debug\PartBox(" + i + ")_" + timestamp + ".png");
+                    newBox.Save(Path.Combine(Main.AppPath, "Debug", "PartBox(" + i + ")_" + timestamp + ".png"));
             }
             filtered.Dispose();
             return ret;
@@ -3328,7 +3328,7 @@ namespace WFInfo
             }
             var image = images.First();
             if (saveDebug)
-                image.Save(Main.AppPath + @"\Debug\FullScreenShot_" + DateTime.UtcNow.ToString("yyyy-MM-dd HH-mm-ssffffff", Main.culture) + ".png");
+                image.Save(Path.Combine(Main.AppPath, "Debug", "FullScreenShot_" + DateTime.UtcNow.ToString("yyyy-MM-dd HH-mm-ssffffff", Main.culture) + ".png"));
             return image;
         }
 
@@ -3473,7 +3473,7 @@ namespace WFInfo
             IWindowInfoService window, IHDRDetectorService hdrDetector)
         {
             _tesseractInitFailed = false;
-            Directory.CreateDirectory(Main.AppPath + @"\Debug");
+            Directory.CreateDirectory(Path.Combine(Main.AppPath, "Debug"));
             _tesseractService = tesseractService;
             _soundPlayer = null;
             _settings = settings;
@@ -3501,7 +3501,7 @@ namespace WFInfo
         internal static void InitThemeTest(IReadOnlyApplicationSettings settings, IWindowInfoService window)
         {
             _tesseractInitFailed = false;
-            Directory.CreateDirectory(Main.AppPath + @"\Debug");
+            Directory.CreateDirectory(Path.Combine(Main.AppPath, "Debug"));
             _settings = settings;
             _window = window;
             _gdiScreenshot = null;
