@@ -13,7 +13,9 @@ code type-checks without WPF/WinForms/Win32.
   `Compile Include` list); keep it the single source of truth for the core
   boundary.
 - `Program.cs` — CLI: `--test <map.json> [out.json]`, `--theme-test
-  <folder> [uiScale]` (`--theme-debug` accepted), `--selfcheck`.
+  <folder> [uiScale]` (`--theme-debug` accepted), `--selfcheck`. Every `--test`
+  run also copies the suite results to `<app dir>/ocr_runs/` (`latest.json` +
+  one timestamped file, newest 60 kept) for the Warframe Info dashboard.
 - `Platform/` — seams ONLY: `HeadlessMain.cs` (stub `Main`), `HeadlessServices.cs`
   (window-info service, process finder, screenshot/log-capture stubs,
   `CustomEntrypoint` helpers), `UiSurrogates.cs` (WPF window shapes),
