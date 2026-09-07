@@ -1,0 +1,234 @@
+/* Warframe Info dashboard — bespoke styles. All classes are prefixed wf- so
+   they never collide with GOV.UK Frontend. Palette follows GOV.UK. */
+
+.wf-header-logo-link {
+  text-decoration: none;
+  display: inline-block;
+  line-height: 0;
+}
+
+.wf-header-logo {
+  height: 78px;
+  width: auto;
+  display: block;
+  border: 3px solid #ffffff;
+  border-radius: 6px;
+  background: #ffffff;
+  box-sizing: content-box;
+}
+
+@media (max-width: 40.0625em) {
+  .wf-header-logo {
+    height: 56px;
+  }
+}
+
+/* Generic helpers ---------------------------------------------------- */
+
+.wf-muted {
+  color: #505a5f;
+}
+
+.wf-!-no-margin-bottom {
+  margin-bottom: 0 !important;
+}
+
+.wf-code {
+  font-family: "GDS Transport", Arial, sans-serif;
+  font-variant-ligatures: none;
+  background: #f3f2f1;
+  padding: 0 4px;
+  border-radius: 2px;
+  font-size: 0.95em;
+}
+
+.wf-err {
+  color: #d4351c;
+}
+
+/* Logs page ---------------------------------------------------------- */
+
+.wf-filter {
+  margin-top: 16px;
+}
+
+.wf-log-panel {
+  margin-top: 8px;
+}
+
+.wf-log {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 12px 16px;
+  max-height: 68vh;
+  overflow: auto;
+  background: #f3f2f1;
+  border: 1px solid #b1b4b6;
+  font-family: "GDS Transport", Arial, sans-serif;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  border-radius: 0;
+}
+
+.wf-logline {
+  padding: 1px 0;
+}
+
+.wf-logline.wf-hidden {
+  display: none;
+}
+
+.wf-log-meta {
+  margin-top: 4px;
+}
+
+/* Cards / chips ------------------------------------------------------ */
+
+.wf-card {
+  border: 1px solid #b1b4b6;
+  padding: 16px;
+  margin-bottom: 20px;
+  background: #ffffff;
+}
+
+.wf-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.wf-card__head h2,
+.wf-card__head h3 {
+  margin-right: auto;
+}
+
+.wf-rewards {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.wf-rewards__item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.wf-chip {
+  display: inline-block;
+  background: #f3f2f1;
+  border: 1px solid #b1b4b6;
+  padding: 2px 8px;
+  font-size: 0.9em;
+}
+
+a.wf-chip {
+  color: #1d70b8;
+  text-decoration: none;
+}
+
+a.wf-chip:hover {
+  text-decoration: underline;
+  background: #e5e2df;
+}
+
+.wf-chip--plain {
+  color: #0b0c0c;
+}
+
+.wf-chip__values {
+  color: #505a5f;
+  font-size: 0.9em;
+  white-space: nowrap;
+}
+
+.wf-run-list {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.wf-run-scenario {
+  border-top: 1px solid #b1b4b6;
+  padding: 10px 0;
+}
+
+.wf-run-scenario:first-child {
+  border-top: none;
+}
+
+.wf-run-scenario .wf-rewards {
+  margin-top: 6px;
+}
+
+/* WFMarket ----------------------------------------------------------- */
+
+.wf-search {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: end;
+}
+
+.wf-clear {
+  align-self: center;
+}
+
+.wf-market-table {
+  margin-top: 8px;
+}
+
+.wf-name-cell {
+  font-weight: 400;
+}
+
+.wf-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.wf-sort-active {
+  font-weight: 700;
+}
+
+.wf-detail-list .govuk-summary-list__value {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Chart -------------------------------------------------------------- */
+
+.wf-chart {
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 8px 0 4px;
+  background: #ffffff;
+}
+
+.wf-chart-key {
+  color: #505a5f;
+  margin-top: 4px;
+}
+
+.wf-key {
+  display: inline-block;
+  width: 18px;
+  height: 4px;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+.wf-key--median {
+  background: #1d70b8;
+}
+
+.wf-key--avg {
+  background: #d4351c;
+}

@@ -1,0 +1,18 @@
+{
+  "tasks": {
+    "start": "deno run -A src/main.ts",
+    "dev": "deno run -A --watch src/main.ts",
+    "check": "deno check src",
+    "test": "deno test -A src",
+    "fmt": "deno fmt",
+    "fmt:check": "deno fmt --check",
+    "lint": "deno lint"
+  },
+  "fmt": {
+    "exclude": ["AGENTS.md", "README.md"]
+  },
+  "lint": {
+    "exclude": ["AGENTS.md", "README.md", "src/static"]
+  },
+  "exclude": ["AGENTS.md", "README.md"]
+}

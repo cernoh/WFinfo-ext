@@ -33,11 +33,17 @@ platform-neutral OCR/theme/market-data/test code (linked, not copied) builds and
 runs as a .NET 9 console runner via the Nix flake in `flake.nix`. Windows UI and
 Win32 surfaces are NOT portable and stay Windows-only.
 
+The repo also carries `dashboard/`: a Deno + GOV.UK Frontend web dashboard
+("Warframe Info", an independent digital service) that presents the local
+WFInfo data — OCR logs, OCR test runs, and cached market prices — in a browser.
+
 ## Ownership
 
 - `WFInfo/` — Windows desktop app AND the shared core sources (Ocr.cs, Data.cs,
   LanguageProcessing/, Services/, Settings/, Tests/). Child: `WFInfo/AGENTS.md`.
 - `headless/` — Linux-native runner project + platform seams. Child: `headless/AGENTS.md`.
+- `dashboard/` — Deno + GOV.UK Frontend web dashboard over local WFInfo data
+  (logs, OCR runs, market DBs). Child: `dashboard/AGENTS.md`.
 - `tests/` — OCR/theme regression framework docs + scenario data. Child: `tests/AGENTS.md`.
 - `docs/` — GitHub Pages website (has CNAME/index.html; do not drop engineering
   docs into it), owned at root.
@@ -74,6 +80,13 @@ Run inside `nix develop`:
 - `dotnet run --project headless -- --test tests/map.json out.json` — OCR suite.
 - `dotnet run --project headless -- --theme-test <folder>` — theme runner.
 
+Dashboard (Deno, also inside `nix develop`):
+
+- `cd dashboard && deno fmt --check && deno check src && deno lint` — static gates.
+- `cd dashboard && deno test -A src` — offline unit tests.
+- `nix flake check` — format/typecheck/unit-test gates in a sandbox.
+- `cd dashboard && deno task dev` — dashboard on http://localhost:8000.
+
 The Windows build cannot be verified on Linux; keep shared-code edits
 Windows-equivalent (Path.Combine semantics) and compile-check them here.
 
@@ -95,5 +108,7 @@ Windows-equivalent (Path.Combine semantics) and compile-check them here.
   test-mode dispatch, portability rules.
 - `headless/AGENTS.md` — Linux runner: linked-source discipline, platform seams,
   env vars, package pins.
+- `dashboard/AGENTS.md` — Deno dashboard: routes, data sources, offline-gate
+  rules, GOV.UK styling conventions.
 - `tests/AGENTS.md` — OCR/theme regression framework: scenario contract,
   data layout, known gaps.
