@@ -27,6 +27,12 @@ The dev shell wires up native `libtesseract50.so`/`libleptonica-1.82.0.so`
 | `--theme-test <folder> [uiScale]` (`--theme-debug` also works) | theme detection over PNGs |
 | `--selfcheck` | renders sample text and OCRs it — verifies natives + tessdata + imaging |
 
+Every `--test` run also persists its results to the WFInfo data dir under
+`ocr_runs/` (`latest.json` plus a timestamped copy; the newest 60 are kept).
+The Warframe Info dashboard (`dashboard/`, run with `nix run .#dashboard`)
+shows these runs on its "Recently seen" page together with reward screens
+parsed from `debug.log`.
+
 Exit codes: `0` all passed, `1` partial failures, `2` fatal errors.
 
 ## Environment

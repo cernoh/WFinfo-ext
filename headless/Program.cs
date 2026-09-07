@@ -5,6 +5,7 @@ using System.Drawing.Text;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 using Tesseract;
 using WFInfo.Services.HDRDetection;
 using WFInfo.Services.WarframeProcess;
@@ -158,6 +159,7 @@ namespace WFInfo
                     var runner = new OCRTestRunner(windowService);
                     var results = runner.RunTestSuite(mapPath);
                     OCRTestRunner.SaveResults(results, outputPath);
+                    PersistSuiteResults(results);
                     PrintSummary(results);
 
                     Console.WriteLine();
@@ -178,6 +180,53 @@ namespace WFInfo
             {
                 Console.Error.WriteLine($"Test execution failed: {ex}");
                 return ExitFatal;
+            }
+        }
+
+        /// <summary>
+        /// Copies the suite results into the app-data dir so the WFInfo Dashboard
+        /// ("Recently seen" page) can surface OCR runs without knowing the CLI's
+        /// output path: &lt;app dir&gt;/ocr_runs/latest.json plus one timestamped file.
+        /// </summary>
+        private static void PersistSuiteResults(TestSuiteResult results)
+        {
+            try
+            {
+                string runsDir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "WFInfo", "ocr_runs");
+                Directory.CreateDirectory(runsDir);
+                string json = JsonConvert.SerializeObject(results, Formatting.Indented);
+                File.WriteAllText(Path.Combine(runsDir, "latest.json"), json);
+                string stamp = DateTime.UtcNow.ToString(
+                    "yyyyMMdd_HHmmssfff", System.Globalization.CultureInfo.InvariantCulture);
+                File.WriteAllText(
+                    Path.Combine(runsDir, results.TestSuiteName + "-" + stamp + ".json"),
+                    json);
+                WFInfoMain.AddLog("Suite results persisted to: " + runsDir);
+                PruneOldRunFiles(runsDir);
+            }
+            catch (Exception ex)
+            {
+                WFInfoMain.AddLog("Failed to persist suite results: " + ex);
+            }
+        }
+
+        /// <summary>Keeps latest.json plus the 59 newest timestamped run files.</summary>
+        private static void PruneOldRunFiles(string runsDir)
+        {
+            try
+            {
+                var files = new DirectoryInfo(runsDir).GetFiles("*.json")
+                    .OrderByDescending(f => f.LastWriteTimeUtc).ToList();
+                foreach (FileInfo old in files.Skip(60))
+                {
+                    old.Delete();
+                }
+            }
+            catch (Exception ex)
+            {
+                WFInfoMain.AddLog("Failed to prune old OCR run files: " + ex.Message);
             }
         }
 
