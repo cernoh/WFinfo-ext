@@ -1,16 +1,19 @@
 {
-  description = "WFInfo headless OCR/theme core — native Linux development environment";
+  description = "WFInfo headless OCR/theme core + Warframe Info dashboard — Linux development environment";
 
   # WFInfo is a Windows .NET Framework 4.8 WPF app. This flake supports the
   # platform-neutral core (OCR pipeline, theme detection, market-data layer and
-  # the headless regression suite under headless/) running natively on Linux.
+  # the headless regression suite under headless/) running natively on Linux,
+  # plus dashboard/ — a Deno + GOV.UK Frontend web dashboard over the local
+  # WFInfo application data (logs, OCR runs, market databases).
   #
-  #   nix develop            -> .NET 9 SDK, libgdiplus, native tesseract/leptonica,
-  #                             fonts and the WFINFO_NATIVE_LIBS env wiring
+  #   nix develop            -> .NET 9 SDK, native tesseract/leptonica, Deno
   #   nix develop -c dotnet build headless/WFInfo.Headless.csproj
   #   nix develop -c dotnet run --project headless -- --selfcheck
   #   nix develop -c dotnet run --project headless -- --test tests/map.json out.json
-  #   nix run .#tesseract-native   -> native-library farm path (usable in CI)
+  #   cd dashboard && deno task dev       -> dashboard on :8000 (inside nix develop)
+  #   nix run .#dashboard                 -> dashboard app
+  #   nix run .#tesseract-native          -> native-library farm path (usable in CI)
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
@@ -66,6 +69,8 @@
             libgdiplus
             fontconfig
             dejavu_fonts
+            deno
+            cacert
           ];
 
           # .NET's runtime dlopens OpenSSL/ICU; libgdiplus needs its fonts.
@@ -90,7 +95,41 @@
             echo "WFInfo headless dev shell"
             echo "  try: dotnet run --project headless -- --selfcheck"
             echo "  try: dotnet run --project headless -- --test tests/map.json out.json"
+            echo "  try: cd dashboard && deno task dev   (Warframe Info dashboard on :8000)"
           '';
+        };
+      });
+
+      # Offline gates so `nix flake check` runs without network: dashboard/src
+      # never imports remote or package modules (unit tests use the local
+      # zero-dependency testutil).
+      checks = forAllSystems (pkgs:
+        let
+          gate = name: buildPhase: pkgs.stdenv.mkDerivation {
+            name = "wfinfo-dashboard-${name}";
+            src = self;
+            buildInputs = [ pkgs.deno ];
+            inherit buildPhase;
+            installPhase = "mkdir -p $out";
+          };
+        in {
+          dashboard-format = gate "format" ''
+            cd dashboard && deno fmt --check
+          '';
+          dashboard-typecheck = gate "typecheck" ''
+            cd dashboard && deno check src
+          '';
+          dashboard-unit-tests = gate "unit-tests" ''
+            cd dashboard && deno test -A src
+          '';
+        });
+
+      apps = forAllSystems (pkgs: {
+        dashboard = {
+          type = "app";
+          program = toString (pkgs.writeShellScriptBin "wfinfo-dashboard" ''
+            exec ${pkgs.deno}/bin/deno run -A ${self}/dashboard/src/main.ts "$@"
+          '');
         };
       });
     };
