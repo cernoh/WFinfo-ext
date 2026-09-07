@@ -8,6 +8,12 @@ WFinfo is designed to provide quick access to both Platinum and Ducat prices for
 
 WFInfo does this by screenshotting the game window, cropping out the part text, then passing it to an Optical Character Recognition Engine, specifically Google's Tesseract. The OCR Engine will then send back the text it found, and we will pull out the part name from that text. From there, we display the stats for each part in an overlay or on a separate window.
 
+> **Linux development.** The Windows GUI is .NET Framework 4.8 + WPF and cannot run
+> on Linux, but the platform-neutral core (OCR pipeline, theme detection, market
+> data, regression tests) builds and runs natively on Linux through the Nix flake:
+> `nix develop`, then
+> `dotnet run --project headless -- --selfcheck` (see `headless/README.md`).
+
 # Usage
 1. Download the [latest release](https://github.com/WFCD/WFinfo/releases/latest)
 1. WFinfo requires some aditional software to function properly:

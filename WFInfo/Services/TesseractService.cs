@@ -40,7 +40,7 @@ namespace WFInfo
     /// Holds all TesseractEngine instances and is responsible for loadind/reloading them
     /// They are all configured with language-specific character whitelists to reduce noise
     /// </summary>
-    public class TesseractService : ITesseractService
+    public class TesseractService : ITesseractService, IDisposable
     {
         /// <summary>
         /// Inventory/Profile engine
@@ -60,9 +60,9 @@ namespace WFInfo
         public TesseractEngine NumbersOnlyEngine { get; private set; }
 
         private static string Locale => ApplicationSettings.GlobalReadonlySettings.Locale;
-        private static readonly string ApplicationDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + @"\WFInfo";
-        private static readonly string NormalDataPath = ApplicationDirectory + @"\tessdata";
-        private static readonly string FallbackDataPath = Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData) + @"\WFInfo" + @"\tessdata";
+        private static readonly string ApplicationDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WFInfo");
+        private static readonly string NormalDataPath = Path.Combine(ApplicationDirectory, "tessdata");
+        private static readonly string FallbackDataPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "WFInfo", "tessdata");
         private string DataPath;
 
         // Fallback whitelist for unknown locales
@@ -205,6 +205,9 @@ namespace WFInfo
             LoadEngines();
         }
 
+        /// <summary>Releases all Tesseract engine instances (used at shutdown and by headless runs).</summary>
+        public void Dispose() => DisposeEngines();
+
         private void DisposeEngines()
         {
             FirstEngine?.Dispose();
@@ -278,8 +281,8 @@ namespace WFInfo
 
             // get trainned data
             string traineddata_hotlink = traineddata_hotlink_prefix + Locale + ".traineddata";
-            string app_data_traineddata_path = NormalDataPath + @"\" + Locale + ".traineddata";
-            string curr_data_traineddata_path = DataPath + @"\" + Locale + ".traineddata";
+            string app_data_traineddata_path = Path.Combine(NormalDataPath, Locale + ".traineddata");
+            string curr_data_traineddata_path = Path.Combine(DataPath, Locale + ".traineddata");
 
             using (var webClient = CustomEntrypoint.CreateNewWebClient())
             {

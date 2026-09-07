@@ -246,3 +246,10 @@ WFInfo/WFIcon.jpg
 
 .idea/.idea.WFInfo/.idea/
 .idea/.idea.WFInfo/
+
+# Headless (Linux) build + run artifacts
+headless/bin/
+headless/obj/
+test_results_*.json
+theme_test_results.txt
+*.user

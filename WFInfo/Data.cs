@@ -31,7 +31,7 @@ namespace WFInfo
         public JObject equipmentData; // Contains equipmentData from Warframe PC Drops          {<EQMT>: {"vaulted": true, "PARTS": {<NAME>:{"relic_name":<name>|"","count":<num>}, ...}},  ...}
         public JObject nameData; // Contains relic to market name translation          {<relic_name>: <market_name>}
 
-        private readonly string applicationDirectory = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData) + @"\WFInfo";
+        private readonly string applicationDirectory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WFInfo");
         private readonly string marketItemsPath;
         private readonly string marketDataPath;
         private readonly string equipmentDataPath;
@@ -90,14 +90,14 @@ namespace WFInfo
             LanguageProcessorFactory.Initialize(settings);
 
             Main.AddLog("Initializing Databases");
-            marketItemsPath = applicationDirectory + @"\market_items.json";
-            marketDataPath = applicationDirectory + @"\market_data.json";
-            equipmentDataPath = applicationDirectory + @"\eqmt_data.json";
-            relicDataPath = applicationDirectory + @"\relic_data.json";
-            nameDataPath = applicationDirectory + @"\name_data.json";
-            filterAllJsonFallbackPath = applicationDirectory + @"\fallback_equipment_list.json";
-            sheetJsonFallbackPath = applicationDirectory + @"\fallback_price_sheet.json";
-            etagsPath = applicationDirectory + @"\etags.json";
+            marketItemsPath = Path.Combine(applicationDirectory, "market_items.json");
+            marketDataPath = Path.Combine(applicationDirectory, "market_data.json");
+            equipmentDataPath = Path.Combine(applicationDirectory, "eqmt_data.json");
+            relicDataPath = Path.Combine(applicationDirectory, "relic_data.json");
+            nameDataPath = Path.Combine(applicationDirectory, "name_data.json");
+            filterAllJsonFallbackPath = Path.Combine(applicationDirectory, "fallback_equipment_list.json");
+            sheetJsonFallbackPath = Path.Combine(applicationDirectory, "fallback_price_sheet.json");
+            etagsPath = Path.Combine(applicationDirectory, "etags.json");
             // wfmItemsFallbackPath will be computed per-request in GetWfmItemList
 
             Directory.CreateDirectory(applicationDirectory);
@@ -1612,7 +1612,7 @@ namespace WFInfo
 
                     if (_settings.AutoCSV)
                     {
-                        if (csv.Length == 0 && !File.Exists(applicationDirectory + @"\rewardExport.csv"))
+                        if (csv.Length == 0 && !File.Exists(Path.Combine(applicationDirectory, "rewardExport.csv")))
                             csv += "Timestamp,ChosenIndex,Reward_0_Name,Reward_0_Plat,Reward_0_Ducats,Reward_1_Name,Reward_1_Plat,Reward_1_Ducats,Reward_2_Name,Reward_2_Plat,Reward_2_Ducats,Reward_3_Name,Reward_3_Plat,Reward_3_Ducats" + Environment.NewLine;
                         csv += DateTime.UtcNow.ToString("yyyy-MM-dd HH-mm-ssffffff", Main.culture) + "," + Main.listingHelper.SelectedRewardIndex;
                         for (int i = 0; i < 4; i++)
@@ -1667,7 +1667,7 @@ namespace WFInfo
                 if (_settings.AutoCSV)
                 {
                     Main.AddLog("appending rewardExport.csv");
-                    File.AppendAllText(applicationDirectory + @"\rewardExport.csv", csv);
+                    File.AppendAllText(Path.Combine(applicationDirectory, "rewardExport.csv"), csv);
                 }
 
                 if (_settings.AutoList)
