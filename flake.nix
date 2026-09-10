@@ -53,6 +53,28 @@
           ln -s "$gd" $out/lib/$alias
         done
       '';
+
+      # Environment the .NET OCR stack needs on Linux: the tesseract/leptonica
+      # farm path, System.Drawing's libgdiplus plus its OpenSSL/ICU/zlib deps,
+      # and fonts for GDI+ text rendering. Shared by the dev shell and `.#scan`.
+      headlessRuntime = pkgs: {
+        LD_LIBRARY_PATH = pkgs.lib.concatStringsSep ":" [
+          "${tesseractNative pkgs}/lib"
+          (pkgs.lib.makeLibraryPath [
+            pkgs.libgdiplus
+            pkgs.openssl
+            pkgs.icu
+            pkgs.zlib
+            pkgs.fontconfig
+          ])
+        ];
+        FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
+        WFINFO_NATIVE_LIBS = "${tesseractNative pkgs}/lib";
+      };
+
+      # Binaries the scan path shells out to: capture (grim + output list),
+      # the notification (notify-send) and the SDK that builds the runner.
+      scanTools = pkgs: with pkgs; [ dotnet-sdk_9 grim wlr-randr libnotify ];
     in
     {
       packages = forAllSystems (pkgs: {
@@ -71,22 +93,13 @@
             dejavu_fonts
             deno
             cacert
+            grim
+            wlr-randr
+            libnotify
           ];
 
           # .NET's runtime dlopens OpenSSL/ICU; libgdiplus needs its fonts.
-          env = {
-            LD_LIBRARY_PATH = pkgs.lib.concatStringsSep ":" [
-              "${tesseractNative pkgs}/lib"
-              (pkgs.lib.makeLibraryPath [
-                pkgs.libgdiplus
-                pkgs.openssl
-                pkgs.icu
-                pkgs.zlib
-                pkgs.fontconfig
-              ])
-            ];
-            FONTCONFIG_FILE = pkgs.makeFontsConf { fontDirectories = [ pkgs.dejavu_fonts ]; };
-            WFINFO_NATIVE_LIBS = "${tesseractNative pkgs}/lib";
+          env = (headlessRuntime pkgs) // {
             DOTNET_CLI_TELEMETRY_OPTOUT = "1";
             DOTNET_NOLOGO = "1";
           };
@@ -94,6 +107,7 @@
           shellHook = ''
             echo "WFInfo headless dev shell"
             echo "  try: dotnet run --project headless -- --selfcheck"
+            echo "  try: dotnet run --project headless -- --scan --no-notify   (reward-screen scan)"
             echo "  try: dotnet run --project headless -- --test tests/map.json out.json"
             echo "  try: cd dashboard && deno task dev   (Warframe Info dashboard on :8000)"
           '';
@@ -125,6 +139,35 @@
         });
 
       apps = forAllSystems (pkgs: {
+        # Reward-screen scan: capture the screen, OCR it with the shared WFInfo
+        # pipeline, price every part from the local price cache (warframe.market
+        # fills it on demand), notify the best choice, and write a scan record
+        # for the dashboard. Bind it to a key in the window manager:
+        #
+        #   None,Print,spawn_shell,nix run /path/to/WFinfo-ext#scan
+        #
+        # It runs the checkout at $PWD (override with WFINFO_SCAN_ROOT) because
+        # the runner is built per checkout; the first press compiles it.
+        scan = {
+          type = "app";
+          program =
+            "${pkgs.writeShellScriptBin "wfscan" ''
+              set -eu
+              root="''${WFINFO_SCAN_ROOT:-$PWD}"
+              if [ ! -f "$root/headless/WFInfo.Headless.csproj" ]; then
+                echo "wfscan: no headless/WFInfo.Headless.csproj under $root" >&2
+                echo "Run from the WFInfo-ext checkout, or set WFINFO_SCAN_ROOT." >&2
+                exit 1
+              fi
+              export PATH="${pkgs.lib.makeBinPath (scanTools pkgs)}:''${PATH:-}"
+${pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "export ${name}=${pkgs.lib.escapeShellArg value}") (headlessRuntime pkgs))}
+              cd "$root"
+              dotnet build -c Release -v:q --nologo headless/WFInfo.Headless.csproj
+              exec dotnet headless/bin/Release/net9.0/WFInfo.Headless.dll --scan "$@"
+            ''}/bin/wfscan";
+          meta.description = "Warframe Info reward-screen scan (OCR, prices, notification)";
+        };
+
         dashboard = {
           type = "app";
           program = toString (pkgs.writeShellScriptBin "wfinfo-dashboard" ''

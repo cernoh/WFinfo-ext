@@ -13,9 +13,19 @@ code type-checks without WPF/WinForms/Win32.
   `Compile Include` list); keep it the single source of truth for the core
   boundary.
 - `Program.cs` — CLI: `--test <map.json> [out.json]`, `--theme-test
-  <folder> [uiScale]` (`--theme-debug` accepted), `--selfcheck`. Every `--test`
-  run also copies the suite results to `<app dir>/ocr_runs/` (`latest.json` +
-  one timestamped file, newest 60 kept) for the Warframe Info dashboard.
+  <folder> [uiScale]` (`--theme-debug` accepted), `--selfcheck`, `--scan
+  [options]`. Every `--test` run also copies the suite results to
+  `<app dir>/ocr_runs/` (`latest.json` + one timestamped file, newest 60 kept)
+  for the Warframe Info dashboard; every `--scan` run writes
+  `<app dir>/scans/latest.json` (same retention) plus `scans/last.png`.
+- `Scan/` — the reward-screen scan feature (Linux-only, real behavior):
+  `ScanRunner.cs` (capture → OCR → price → recommend → persist → notify),
+  `ScreenCapture.cs` (grim + wlr-randr), `PriceCache.cs` (local platinum cache
+  with on-demand warframe.market refresh), `MarketSheet.cs` (indexes
+  `market_items.json`/`market_data.json`), `Notifier.cs` (notify-send),
+  `ScanModels.cs`/`ScanOptions.cs`/`Shell.cs`. The record shape is a contract
+  with the dashboard's Scan page: the field list is in `README.md` (Scan) and
+  the reader is `dashboard/src/lib/scan.ts` — change both together.
 - `Platform/` — seams ONLY: `HeadlessMain.cs` (stub `Main`), `HeadlessServices.cs`
   (window-info service, process finder, screenshot/log-capture stubs,
   `CustomEntrypoint` helpers), `UiSurrogates.cs` (WPF window shapes),
@@ -34,6 +44,19 @@ code type-checks without WPF/WinForms/Win32.
   copy) — never silently fake core behavior.
 - Adding a Windows-only API to shared code usually requires extending a seam;
   prefer removing the Windows-only dependency from the shared file instead.
+- `Scan/` is real Linux feature code, not a seam — seams stay in `Platform/`.
+  The scan shells out to `grim` (capture), `wlr-randr` (output list) and
+  `notify-send` (verdict); the flake's dev shell and the `.#scan` app put all
+  three on PATH, so never assume they exist system-wide.
+- The scan reads `market_items.json`/`market_data.json` straight from disk
+  instead of calling `Data.Update()`: a hotkey press must not wait for a network
+  database refresh. Deeper price lookups go through `PriceCache`
+  (`<app dir>/price_cache.json`): cache hits answer instantly, missing or stale
+  slugs are fetched from warframe.market in parallel, failed fetches are NOT
+  cached, and the sheet value is the offline fallback.
+- The scan writes only `<app dir>/scans/` (records + `last.png`) and
+  `<app dir>/price_cache.json`. It never writes the Windows-side files and never
+  touches the ocr_runs history.
 - Native library names are exact (wrapper dlopens them):
   `libtesseract50.so`, `libleptonica-1.82.0.so`; supplied by the flake's
   `tesseract-native` farm through `WFINFO_NATIVE_LIBS`.
@@ -54,6 +77,13 @@ code type-checks without WPF/WinForms/Win32.
   exist the OCR suite reports "PNG not found" errors for every scenario while
   still exercising DB update + engine init (this is the pre-existing repo state,
   not a regression).
+- Scan runs: `nix run .#scan -- --no-notify` (flake app; builds the runner in
+  the checkout, then captures every output) or, inside the dev shell,
+  `dotnet run --project headless -- --scan --no-notify`. Use `--file <png>` to
+  price an existing screenshot without capturing, `--output <monitor>` to pin a
+  single monitor and `--json` to print the record. A reward screen is only
+  available while the game shows one — verify the plumbing with `--file` and the
+  capture path with a plain `--scan` on any desktop.
 
 ## Verification
 
@@ -61,6 +91,12 @@ code type-checks without WPF/WinForms/Win32.
 - `nix develop -c dotnet run --project headless -- --selfcheck` — PASS expected.
 - `nix develop -c dotnet run --project headless -- --test tests/map.json out.json`
   — runs the suite; exit 0/1/2 per the runner contract.
+- `nix develop -c dotnet run --project headless -- --scan --no-notify` — must
+  print a capture line, write `<app dir>/scans/latest.json` and leave a
+  `Choice`-free record (exit 0) when no reward screen is on screen.
+- `nix develop -c dotnet run --project headless -- --scan --no-notify --file <png>`
+  — prices an existing screenshot; the second run with the same PNG must report
+  cache hits instead of fetches.
 
 ## Child DOX Index
 

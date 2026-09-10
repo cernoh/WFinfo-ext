@@ -79,6 +79,10 @@ Run inside `nix develop`:
 - `dotnet run --project headless -- --selfcheck` — native OCR end-to-end.
 - `dotnet run --project headless -- --test tests/map.json out.json` — OCR suite.
 - `dotnet run --project headless -- --theme-test <folder>` — theme runner.
+- `dotnet run --project headless -- --scan --no-notify` — reward-screen scan
+  (grim capture + OCR + prices; writes `<app dir>/scans/latest.json`).
+- `nix run .#scan` — the same scan through the flake, for a window-manager
+  hotkey (`--file <png>` prices an existing screenshot).
 
 Dashboard (Deno, also inside `nix develop`):
 

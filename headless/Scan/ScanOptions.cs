@@ -1,0 +1,100 @@
+using System;
+using System.IO;
+
+namespace WFInfo.Scan
+{
+    /// <summary>
+    /// Paths the scan reads and writes inside the WFInfo application-data dir
+    /// (same root the OCR suite, the market DBs and the dashboard already use).
+    /// </summary>
+    internal static class ScanPaths
+    {
+        public static string AppDir =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "WFInfo");
+
+        public static string ScansDir => Path.Combine(AppDir, "scans");
+        public static string LatestScan => Path.Combine(ScansDir, "latest.json");
+        public static string ScreenshotPng => Path.Combine(ScansDir, "last.png");
+        public static string PriceCache => Path.Combine(AppDir, "price_cache.json");
+        public static string MarketItems => Path.Combine(AppDir, "market_items.json");
+        public static string MarketData => Path.Combine(AppDir, "market_data.json");
+
+        /// <summary>ISO-8601 UTC with milliseconds, the timestamp format of the scan contract.</summary>
+        public static string Iso(DateTime utc) =>
+            utc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Command-line options of `WFInfo.Headless --scan`.</summary>
+    internal sealed class ScanOptions
+    {
+        /// <summary>OCR this PNG instead of capturing the screen.</summary>
+        public string File { get; private set; }
+
+        /// <summary>grim output name (monitor); null captures every output.</summary>
+        public string Output { get; private set; }
+
+        /// <summary>Ignore the price-cache TTL for this run.</summary>
+        public bool Refresh { get; private set; }
+
+        public double TtlHours { get; private set; } = 6;
+
+        /// <summary>Post a desktop notification with the recommendation.</summary>
+        public bool Notify { get; private set; } = true;
+
+        /// <summary>Print the scan record JSON to stdout.</summary>
+        public bool PrintJson { get; private set; }
+
+        public bool Help { get; private set; }
+
+        /// <summary>Parses scan arguments; throws <see cref="ArgumentException"/> on bad input.</summary>
+        public static ScanOptions Parse(string[] args)
+        {
+            var options = new ScanOptions();
+
+            for (int i = 0; i < args.Length; i++)
+            {
+                string arg = args[i];
+                switch (arg.ToLowerInvariant())
+                {
+                    case "--file":
+                        options.File = RequireValue(args, ref i, arg);
+                        break;
+                    case "--output":
+                        options.Output = RequireValue(args, ref i, arg);
+                        break;
+                    case "--refresh":
+                        options.Refresh = true;
+                        break;
+                    case "--ttl":
+                        string ttl = RequireValue(args, ref i, arg);
+                        if (!double.TryParse(ttl, System.Globalization.NumberStyles.Float,
+                                System.Globalization.CultureInfo.InvariantCulture, out double hours) || hours <= 0)
+                            throw new ArgumentException($"--ttl expects a positive number of hours, got '{ttl}'");
+                        options.TtlHours = hours;
+                        break;
+                    case "--no-notify":
+                        options.Notify = false;
+                        break;
+                    case "--json":
+                        options.PrintJson = true;
+                        break;
+                    case "-h":
+                    case "--help":
+                        options.Help = true;
+                        break;
+                    default:
+                        throw new ArgumentException($"Unknown scan option: {arg}");
+                }
+            }
+
+            return options;
+        }
+
+        private static string RequireValue(string[] args, ref int index, string flag)
+        {
+            if (index + 1 >= args.Length)
+                throw new ArgumentException($"{flag} expects a value");
+            return args[++index];
+        }
+    }
+}
