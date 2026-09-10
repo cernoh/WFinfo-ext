@@ -50,7 +50,11 @@ crown crest, no affiliation claims.
 ## Work Guidance
 
 - Run inside the flake dev shell (`nix develop` from the repo root), then:
-  - `cd dashboard && deno task dev` — watch server on http://localhost:8000
+  - `nix run .#dev` — live-reload server on http://localhost:8000 (from the
+    repo root; it runs the working tree, since `--watch` in the read-only store
+    path would never see an edit — override the root with
+    `WFINFO_DASHBOARD_ROOT`)
+  - `cd dashboard && deno task dev` — the same watch server inside `nix develop`
   - `deno task start` / `deno task check` / `deno task test` / `deno task fmt`
   - `nix run .#dashboard` — run the app from the flake
 - If port 8000 is busy, set `PORT` (e.g. `PORT=8765 deno task start`).
