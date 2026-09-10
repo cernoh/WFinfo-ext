@@ -86,6 +86,8 @@ Dashboard (Deno, also inside `nix develop`):
 - `cd dashboard && deno test -A src` — offline unit tests.
 - `nix flake check` — format/typecheck/unit-test gates in a sandbox.
 - `cd dashboard && deno task dev` — dashboard on http://localhost:8000.
+- `nix run .#dev` — the same dev server with live reload, run from the repo
+  root (it serves the working tree; `nix run .#dashboard` runs the store copy).
 
 The Windows build cannot be verified on Linux; keep shared-code edits
 Windows-equivalent (Path.Combine semantics) and compile-check them here.

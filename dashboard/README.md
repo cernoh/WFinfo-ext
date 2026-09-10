@@ -15,16 +15,27 @@ Digital Extremes, WFCD, or warframe.market.
 
 ## Quick start
 
-From the repo root inside the flake dev shell:
+From the repo root, with live reload:
+
+```bash
+nix run .#dev
+```
+
+Edit a file under `dashboard/src/`, and the server restarts. Then open
+<http://localhost:8000>. Use a different port with `PORT=8765`.
+
+`nix run .#dev` runs `dashboard/` from the current checkout, because `--watch`
+cannot see edits inside the read-only Nix store. Set `WFINFO_DASHBOARD_ROOT` to
+point at the checkout when you run the app from somewhere else.
+
+Inside the dev shell the same task is available directly:
 
 ```bash
 nix develop
 cd dashboard && deno task dev
 ```
 
-Then open <http://localhost:8000>. Use a different port with `PORT=8765`.
-
-To run it without the watch mode:
+To run it without the watch mode (this one runs the store copy):
 
 ```bash
 nix run .#dashboard

@@ -11,7 +11,7 @@
   #   nix develop -c dotnet build headless/WFInfo.Headless.csproj
   #   nix develop -c dotnet run --project headless -- --selfcheck
   #   nix develop -c dotnet run --project headless -- --test tests/map.json out.json
-  #   cd dashboard && deno task dev       -> dashboard on :8000 (inside nix develop)
+  #   nix run .#dev                       -> dashboard dev server, live reload (:8000)
   #   nix run .#dashboard                 -> dashboard app
   #   nix run .#tesseract-native          -> native-library farm path (usable in CI)
 
@@ -95,7 +95,7 @@
             echo "WFInfo headless dev shell"
             echo "  try: dotnet run --project headless -- --selfcheck"
             echo "  try: dotnet run --project headless -- --test tests/map.json out.json"
-            echo "  try: cd dashboard && deno task dev   (Warframe Info dashboard on :8000)"
+            echo "  try: nix run .#dev                   (dashboard live-reload server on :8000)"
           '';
         };
       });
@@ -125,11 +125,39 @@
         });
 
       apps = forAllSystems (pkgs: {
+        # Live-reload development server: deno.json's `dev` task runs the
+        # server with `--watch`, so a source edit restarts it.
+        #
+        # Unlike `.#dashboard`, this must run the working tree: Nix copies the
+        # flake source into the read-only store, where `--watch` can never see
+        # an edit. So resolve the dashboard from the current directory.
+        dev = {
+          type = "app";
+          # `program` must name the script, not the derivation output dir.
+          program =
+            "${pkgs.writeShellScriptBin "wfinfo-dashboard-dev" ''
+              set -eu
+              PATH="${pkgs.deno}/bin''${PATH:+:$PATH}"
+              export PATH
+              root="''${WFINFO_DASHBOARD_ROOT:-$PWD}"
+              if [ ! -f "$root/dashboard/src/main.ts" ]; then
+                echo "wfinfo-dashboard-dev: no dashboard/src/main.ts under $root" >&2
+                echo "Run from the repository root, or set WFINFO_DASHBOARD_ROOT." >&2
+                exit 1
+              fi
+              cd "$root/dashboard"
+              exec deno task dev "$@"
+            ''}/bin/wfinfo-dashboard-dev";
+          meta.description = "Warframe Info dashboard dev server (live reload, working tree)";
+        };
+
         dashboard = {
           type = "app";
-          program = toString (pkgs.writeShellScriptBin "wfinfo-dashboard" ''
-            exec ${pkgs.deno}/bin/deno run -A ${self}/dashboard/src/main.ts "$@"
-          '');
+          program =
+            "${pkgs.writeShellScriptBin "wfinfo-dashboard" ''
+              exec ${pkgs.deno}/bin/deno run -A ${self}/dashboard/src/main.ts "$@"
+            ''}/bin/wfinfo-dashboard";
+          meta.description = "Warframe Info dashboard server (flake source copy)";
         };
       });
     };
