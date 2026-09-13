@@ -11,7 +11,7 @@ import { wfmItemUrl } from "./items.ts";
 import type { LiveStats } from "./wfm.ts";
 import { priceChartSvg } from "./charts.ts";
 
-export type NavKey = "logs" | "recent" | "wfmarket";
+export type NavKey = "logs" | "recent" | "scan" | "wfmarket";
 
 /* ------------------------------------------------------------------ */
 /* Presentation helpers                                                */
@@ -83,6 +83,7 @@ function tokenChip(t: TokenView, extraNote: string): string {
 const NAV: { key: NavKey; href: string; label: string }[] = [
   { key: "logs", href: "/logs", label: "Logs" },
   { key: "recent", href: "/recent", label: "Recently seen" },
+  { key: "scan", href: "/scan", label: "Scan" },
   { key: "wfmarket", href: "/wfmarket", label: "WFMarket" },
 ];
 
@@ -358,6 +359,199 @@ ${runCards}
     escapeHtml(fmtDate(state.generatedMs))
   } · refreshes automatically while visible.</p>`;
   return shell("Recently seen", "recent", content);
+}
+
+/* ------------------------------------------------------------------ */
+/* OCR scan page                                                       */
+/* ------------------------------------------------------------------ */
+
+export interface ScanChoiceView {
+  /** 1-based screen position, left to right. */
+  index: number;
+  part: string;
+  slug: string | null;
+  plat: number | null;
+  platSource: string | null;
+  volume: number | null;
+  ducats: number | null;
+  best: boolean;
+}
+
+export interface ScanView {
+  startedMs: number | null;
+  finishedMs: number | null;
+  durationMs: number | null;
+  /** "grim" (screen capture) or "file" (--file <png>). */
+  captureSource: string | null;
+  /** The grim output name, or the input file path. */
+  captureTarget: string | null;
+  /** True when <app dir>/scans/last.png exists on disk. */
+  screenshot: boolean;
+  choices: ScanChoiceView[];
+  best: ScanChoiceView | null;
+  priceCache: {
+    hits: number;
+    fetched: number;
+    failed: number;
+    entries: number;
+  };
+  error: string | null;
+}
+
+export interface ScanPageState {
+  appDir: string;
+  scan: ScanView | null;
+  generatedMs: number;
+}
+
+/** One row of the scan metadata summary list; `value` may hold markup. */
+function scanSummaryRow(key: string, value: string): string {
+  return `<div class="govuk-summary-list__row">
+    <dt class="govuk-summary-list__key">${escapeHtml(key)}</dt>
+    <dd class="govuk-summary-list__value">${value}</dd>
+  </div>`;
+}
+
+/**
+ * The inner body of the /scan page (everything inside #wf-scan-body): the
+ * verdict panel, scan metadata, the choice table and the screenshot — or the
+ * empty-state inset when no scan exists yet. Also served by /api/scan so the
+ * polling script can swap in freshly rendered markup.
+ */
+export function scanBodyHtml(state: ScanPageState): string {
+  const scan = state.scan;
+  if (scan === null) {
+    return `<div class="govuk-inset-text">
+  <p class="govuk-body wf-!-no-margin-bottom">
+    No scan recorded yet. Press the scan hotkey (or run
+    <code class="wf-code">nix run .#scan</code>) on a fissure reward screen and
+    this page fills with the newest result: the part worth taking, every
+    choice with its platinum price, and the captured screenshot. Scan records
+    are read from
+    <code class="wf-code">${escapeHtml(state.appDir)}/scans/latest.json</code>.
+  </p>
+</div>`;
+  }
+
+  const best = scan.best;
+  const verdict = best !== null
+    ? `<div class="govuk-panel govuk-panel--confirmation">
+  <h2 class="govuk-panel__title">Take: ${escapeHtml(best.part)}</h2>
+  <div class="govuk-panel__body">Best platinum return: ${
+      fmtPlat(best.plat)
+    } plat</div>
+</div>`
+    : `<div class="govuk-inset-text">
+  <p class="govuk-body wf-!-no-margin-bottom">
+    No choice had a platinum price, so there is nothing to recommend. The
+    recognised choices below still show what the scan saw.
+  </p>
+</div>`;
+
+  const duration = scan.durationMs === null
+    ? "unknown"
+    : `${(scan.durationMs / 1000).toFixed(1)} s`;
+  const captureValue = scan.captureSource === null
+    ? "unknown"
+    : `${scan.captureSource} · ${scan.captureTarget ?? "no target"}`;
+  const cache = scan.priceCache;
+  const cacheValue =
+    `${cache.hits} cached · ${cache.fetched} fetched · ${cache.failed} failed · ${cache.entries} entries`;
+
+  const errorBlock = scan.error === null ? "" : `<div class="govuk-inset-text">
+  <p class="govuk-body wf-err wf-!-no-margin-bottom">Scan error: ${
+    escapeHtml(scan.error)
+  }</p>
+</div>`;
+
+  const noChoices = scan.choices.length > 0
+    ? ""
+    : `<div class="govuk-inset-text">
+  <p class="govuk-body wf-!-no-margin-bottom">
+    The scan ran but recognised no reward choices — the reward screen was not
+    visible or no prime part was detected. Scan again with a fissure reward
+    screen showing.
+  </p>
+</div>`;
+
+  const rows = scan.choices.map((c) => {
+    const plat = c.plat === null ? "—" : fmtPlat(c.plat);
+    const volume = c.volume === null ? "—" : fmtVol(c.volume);
+    const ducats = c.ducats === null ? "—" : fmtDucats(c.ducats);
+    const partCell = c.slug
+      ? `<a class="govuk-link" href="/wfmarket/${escapeHtml(c.slug)}">${
+        escapeHtml(c.part)
+      }</a>`
+      : escapeHtml(c.part);
+    const bestCell = c.best ? tag("Best", "green") : "";
+    return `<tr class="govuk-table__row">
+  <th scope="row" class="govuk-table__header wf-num">${c.index}</th>
+  <td class="govuk-table__cell wf-name-cell">${partCell}</td>
+  <td class="govuk-table__cell wf-num">${plat}</td>
+  <td class="govuk-table__cell">${
+      c.platSource === null ? "—" : escapeHtml(c.platSource)
+    }</td>
+  <td class="govuk-table__cell wf-num">${volume}</td>
+  <td class="govuk-table__cell wf-num">${ducats}</td>
+  <td class="govuk-table__cell">${bestCell}</td>
+</tr>`;
+  }).join("\n");
+
+  const table = scan.choices.length === 0
+    ? ""
+    : `<table class="govuk-table wf-market-table">
+  <caption class="govuk-table__caption govuk-table__caption--m">Recognised choices</caption>
+  <thead class="govuk-table__head">
+    <tr class="govuk-table__row">
+      <th scope="col" class="govuk-table__header wf-num">#</th>
+      <th scope="col" class="govuk-table__header">Part</th>
+      <th scope="col" class="govuk-table__header wf-num">Plat</th>
+      <th scope="col" class="govuk-table__header">Plat source</th>
+      <th scope="col" class="govuk-table__header wf-num">Volume</th>
+      <th scope="col" class="govuk-table__header wf-num">Ducats</th>
+      <th scope="col" class="govuk-table__header">Best</th>
+    </tr>
+  </thead>
+  <tbody class="govuk-table__body">
+${rows}
+  </tbody>
+</table>`;
+
+  const shot = scan.screenshot
+    ? `<figure class="wf-scan-shot">
+  <a class="govuk-link" href="/scan/screenshot">Open the full screenshot</a>
+  <img class="wf-scan-shot__img" src="/scan/screenshot" alt="Captured reward screen">
+</figure>`
+    : "";
+
+  return `${verdict}
+${errorBlock}
+<dl class="govuk-summary-list wf-detail-list">
+${scanSummaryRow("Scan time", timeTag(scan.startedMs, "unknown time"))}
+${scanSummaryRow("Duration", escapeHtml(duration))}
+${scanSummaryRow("Capture", escapeHtml(captureValue))}
+${scanSummaryRow("Price cache", escapeHtml(cacheValue))}
+</dl>
+${shot}
+${table}
+${noChoices}`;
+}
+
+export function scanPageHtml(state: ScanPageState): string {
+  const content = `
+<h1 class="govuk-heading-xl">OCR scan</h1>
+<p class="govuk-body">The newest reward-screen scan made by the headless scanner
+(<code class="wf-code">WFInfo.Headless --scan</code>): which prime part to take
+for the best platinum return, every choice it recognised, and the capture it
+priced.</p>
+<div id="wf-scan-body">
+${scanBodyHtml(state)}
+</div>
+<p class="govuk-body-s wf-muted">Updated ${
+    escapeHtml(fmtDate(state.generatedMs))
+  } ·
+refreshes automatically while visible.</p>`;
+  return shell("Scan", "scan", content);
 }
 
 /* ------------------------------------------------------------------ */

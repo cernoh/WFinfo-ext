@@ -4,6 +4,7 @@
  * Serves GOV.UK-styled pages over WFInfo's local application data:
  *   /logs       — live tail of debug.log
  *   /recent     — reward screens from debug.log + OCR test-suite results
+ *   /scan       — newest OCR reward-screen scan and which part to take
  *   /wfmarket   — cached prime-part prices, with live 90-day statistics per item
  *
  * Environment:
@@ -44,14 +45,22 @@ import {
   type RewardView,
   type RunScenarioView,
   type RunView,
+  scanBodyHtml,
+  type ScanChoiceView,
+  scanPageHtml,
+  type ScanPageState,
+  type ScanView,
   type TokenView,
   wfmarketPageHtml,
 } from "./lib/view.ts";
+import { parseScanResult, resolveBest, type ScanResult } from "./lib/scan.ts";
 
 const PORT = Number(Deno.env.get("PORT") ?? "8000");
 const APP_DIR = resolveAppDir(Deno.env.toObject());
 const DEBUG_LOG = `${APP_DIR}/debug.log`;
 const RUNS_DIR = `${APP_DIR}/ocr_runs`;
+const SCAN_FILE = `${APP_DIR}/scans/latest.json`;
+const SCAN_SHOT = `${APP_DIR}/scans/last.png`;
 const MARKET_ITEMS = `${APP_DIR}/market_items.json`;
 const MARKET_DATA = `${APP_DIR}/market_data.json`;
 const TAIL_BYTES = 512 * 1024;
@@ -330,6 +339,43 @@ async function itemDetailState(slug: string): Promise<
   return { item, stats, appDir: APP_DIR };
 }
 
+function scanState(): ScanPageState {
+  const scan = parseScanResult(parseJson(SCAN_FILE));
+  return {
+    appDir: APP_DIR,
+    scan: scan === null ? null : toScanView(scan, fileExists(SCAN_SHOT)),
+    generatedMs: Date.now(),
+  };
+}
+
+/** Map the parsed record onto the view model the /scan page renders. */
+function toScanView(scan: ScanResult, screenshot: boolean): ScanView {
+  const best = resolveBest(scan);
+  const bestAt = best === null ? -1 : scan.choices.indexOf(best);
+  const choices: ScanChoiceView[] = scan.choices.map((c, i) => ({
+    index: c.index,
+    part: c.part,
+    slug: c.slug,
+    plat: c.plat,
+    platSource: c.platSource,
+    volume: c.volume,
+    ducats: c.ducats,
+    best: c.best || i === bestAt,
+  }));
+  return {
+    startedMs: Number.isFinite(scan.startedMs) ? scan.startedMs : null,
+    finishedMs: scan.finishedMs,
+    durationMs: scan.durationMs,
+    captureSource: scan.captureSource,
+    captureTarget: scan.captureTarget,
+    screenshot,
+    choices,
+    best: bestAt >= 0 ? choices[bestAt] : null,
+    priceCache: scan.priceCache,
+    error: scan.error,
+  };
+}
+
 /* ------------------------------------------------------------------ */
 /* API responses                                                       */
 /* ------------------------------------------------------------------ */
@@ -380,6 +426,13 @@ function apiOcrRuns(): Response {
     })),
   }));
   return json({ runs });
+}
+
+function apiScan(): Response {
+  return json({
+    updatedAt: fileMtime(SCAN_FILE) ?? Date.now(),
+    body: scanBodyHtml(scanState()),
+  });
 }
 
 /* ------------------------------------------------------------------ */
@@ -435,6 +488,25 @@ async function handler(req: Request): Promise<Response> {
 
     if (path === "/recent") return html(recentPageHtml(recentState()));
 
+    if (path === "/scan") return html(scanPageHtml(scanState()));
+
+    if (path === "/scan/screenshot") {
+      // Only the fixed screenshot path is ever served: the route is an exact
+      // match and the file name is a compile-time constant, so no request
+      // input reaches the filesystem path.
+      try {
+        const bytes = Deno.readFileSync(SCAN_SHOT);
+        return new Response(bytes, {
+          headers: {
+            "content-type": "image/png",
+            "cache-control": "no-store",
+          },
+        });
+      } catch {
+        return new Response("scan screenshot not found", { status: 404 });
+      }
+    }
+
     if (path === "/wfmarket") return html(wfmarketPageHtml(marketState(url)));
 
     if (path.startsWith("/wfmarket/")) {
@@ -447,6 +519,7 @@ async function handler(req: Request): Promise<Response> {
     if (path === "/api/logs") return apiLogs();
     if (path === "/api/reward-events") return apiRewardEvents();
     if (path === "/api/ocr-runs") return apiOcrRuns();
+    if (path === "/api/scan") return apiScan();
 
     if (path.startsWith("/govuk/")) {
       const asset = await govukAsset(path);

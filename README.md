@@ -13,6 +13,13 @@ WFInfo does this by screenshotting the game window, cropping out the part text, 
 > data, regression tests) builds and runs natively on Linux through the Nix flake:
 > `nix develop`, then
 > `dotnet run --project headless -- --selfcheck` (see `headless/README.md`).
+>
+> The Linux runner can also scan a live reward screen: `nix run .#scan` captures
+> the screen, OCRs the rewards, prices every part from a local cache (fetched
+> from warframe.market), posts the best platinum choice as a desktop
+> notification and writes the result for the Warframe Info dashboard. Bind it to
+> a key in your window manager — `None,Print,spawn_shell,nix run
+> /path/to/WFinfo-ext#scan`.
 
 # Usage
 1. Download the [latest release](https://github.com/WFCD/WFinfo/releases/latest)

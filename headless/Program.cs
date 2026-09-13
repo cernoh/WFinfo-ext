@@ -4,9 +4,12 @@ using System.Drawing.Imaging;
 using System.Drawing.Text;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Tesseract;
+using WFInfo.Scan;
 using WFInfo.Services.HDRDetection;
 using WFInfo.Services.WarframeProcess;
 using WFInfo.Services.WindowInfo;
@@ -29,6 +32,7 @@ namespace WFInfo
     ///   WFInfo.Headless --theme-debug <folder> [uiScale] theme detection runner
     ///   WFInfo.Headless --theme-test  <folder> [uiScale] alias of --theme-debug
     ///   WFInfo.Headless --selfcheck                      end-to-end OCR engine check
+    ///   WFInfo.Headless --scan [options]                 reward-screen scan (capture + OCR + prices)
     ///
     /// Environment:
     ///   WFINFO_NATIVE_LIBS  directory with libtesseract50.so + libleptonica-1.82.0.so
@@ -82,6 +86,11 @@ namespace WFInfo
             if (first.Equals("--selfcheck", StringComparison.OrdinalIgnoreCase))
             {
                 return await RunSelfCheck().ConfigureAwait(false);
+            }
+
+            if (first.Equals("--scan", StringComparison.OrdinalIgnoreCase))
+            {
+                return await RunScan(clean.Skip(1).ToArray()).ConfigureAwait(false);
             }
 
             PrintUsage();
@@ -181,6 +190,124 @@ namespace WFInfo
                 Console.Error.WriteLine($"Test execution failed: {ex}");
                 return ExitFatal;
             }
+        }
+
+        /// <summary>
+        /// Reward-screen scan (`--scan`): capture the screen (or read a PNG), run
+        /// the shared OCR pipeline over it, price every recognised part from the
+        /// local price cache (filling it from warframe.market on demand), pick the
+        /// best platinum choice, then persist a scan record under
+        /// &lt;app dir&gt;/scans for the dashboard and show the verdict as a desktop
+        /// notification.
+        ///
+        /// The cached market databases are read from disk instead of calling
+        /// Data.Update(): a hotkey press must not wait for a network refresh.
+        /// </summary>
+        private static async Task<int> RunScan(string[] args)
+        {
+            ScanOptions options;
+            try
+            {
+                options = ScanOptions.Parse(args);
+            }
+            catch (ArgumentException ex)
+            {
+                Console.Error.WriteLine("ERROR: " + ex.Message);
+                PrintScanUsage();
+                return ExitFatal;
+            }
+
+            if (options.Help)
+            {
+                PrintScanUsage();
+                return ExitAllPassed;
+            }
+
+            WarnIfNativeLibsMissing();
+
+            try
+            {
+                var settings = ApplicationSettings.GlobalSettings;
+                settings.Locale = "en";
+                settings.Debug = false;
+
+                var processFinder = new HeadlessProcessFinder();
+                var windowService = new HeadlessWindowInfoService();
+
+                var data = new Data(ApplicationSettings.GlobalReadonlySettings, processFinder, windowService)
+                {
+                    marketItems = LoadLocalJson(ScanPaths.MarketItems, "market_items.json"),
+                    marketData = LoadLocalJson(ScanPaths.MarketData, "market_data.json"),
+                };
+                WFInfoMain.dataBase = data;
+
+                var tesseractService = new TesseractService();
+                try
+                {
+                    OCR.InitForTest(
+                        tesseractService,
+                        ApplicationSettings.GlobalReadonlySettings,
+                        windowService,
+                        new HeadlessHDRDetector(false));
+
+                    using (var http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) })
+                    {
+                        http.DefaultRequestHeaders.UserAgent.ParseAdd(
+                            "WFInfo/" + WFInfoMain.BuildVersion + " (+https://github.com/cernoh/WFinfo-ext)");
+
+                        MarketSheet sheet = MarketSheet.Load(ScanPaths.MarketItems, ScanPaths.MarketData, out string sheetWarning);
+                        if (!string.IsNullOrEmpty(sheetWarning))
+                            Console.Error.WriteLine("WARNING: " + sheetWarning);
+
+                        var cache = new PriceCache(ScanPaths.PriceCache, http);
+                        var runner = new ScanRunner(options, windowService, sheet, cache, settings);
+                        return await runner.RunAsync().ConfigureAwait(false);
+                    }
+                }
+                finally
+                {
+                    tesseractService.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Scan failed: {ex}");
+                return ExitFatal;
+            }
+        }
+
+        /// <summary>Reads one of WFInfo's cached database files; empty on failure.</summary>
+        private static JObject LoadLocalJson(string path, string label)
+        {
+            if (!File.Exists(path))
+            {
+                Console.Error.WriteLine($"WARNING: {label} missing at {path}; run the app or the OCR suite once to cache it.");
+                return new JObject();
+            }
+
+            try
+            {
+                return JObject.Parse(File.ReadAllText(path));
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"WARNING: cannot parse {label}: {ex.Message}");
+                return new JObject();
+            }
+        }
+
+        private static void PrintScanUsage()
+        {
+            Console.WriteLine("Usage: WFInfo.Headless --scan [options]");
+            Console.WriteLine();
+            Console.WriteLine("  --file <png>      OCR this screenshot instead of capturing the screen");
+            Console.WriteLine("  --output <name>   grim output (monitor) to capture; default tries every output");
+            Console.WriteLine("  --theme <name>    force a UI theme instead of the automatic probe");
+            Console.WriteLine("                    (auto | " + ScanOptions.ThemeNames() + ")");
+            Console.WriteLine("  --refresh         ignore the local price-cache TTL for this run");
+            Console.WriteLine("  --ttl <hours>     price-cache lifetime in hours (default 6)");
+            Console.WriteLine("  --no-notify       do not post the desktop notification");
+            Console.WriteLine("  --json            print the scan record to stdout");
         }
 
         /// <summary>
@@ -357,6 +484,7 @@ namespace WFInfo
             Console.WriteLine("  WFInfo.Headless <map.json> [results.json]           (flag optional)");
             Console.WriteLine("  WFInfo.Headless --theme-debug <folder> [uiScale]   Run theme detection over PNGs");
             Console.WriteLine("  WFInfo.Headless --selfcheck                         Verify the OCR engine end-to-end");
+            Console.WriteLine("  WFInfo.Headless --scan [options]                    Reward-screen scan (see --scan --help)");
             Console.WriteLine();
             Console.WriteLine("Environment:");
             Console.WriteLine("  WFINFO_NATIVE_LIBS  dir with libtesseract50.so + libleptonica-1.82.0.so");

@@ -51,6 +51,7 @@
   <ItemGroup>
     <Compile Include="Program.cs" />
     <Compile Include="Platform\*.cs" />
+    <Compile Include="Scan\*.cs" />
   </ItemGroup>
 
   <ItemGroup>
