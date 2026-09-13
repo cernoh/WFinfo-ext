@@ -238,6 +238,7 @@ namespace WFInfo
                 {
                     marketItems = LoadLocalJson(ScanPaths.MarketItems, "market_items.json"),
                     marketData = LoadLocalJson(ScanPaths.MarketData, "market_data.json"),
+                    nameData = LoadLocalJson(ScanPaths.NameData, "name_data.json"),
                 };
                 WFInfoMain.dataBase = data;
 

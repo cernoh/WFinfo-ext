@@ -315,7 +315,7 @@ namespace WFInfo.Scan
             }
             catch (Exception ex)
             {
-                Main.AddLog("Reward extraction failed: " + ex.Message);
+                Main.AddLog("Reward extraction failed: " + ex);
                 return new List<string>();
             }
         }
