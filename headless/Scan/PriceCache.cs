@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -49,7 +51,12 @@ namespace WFInfo.Scan
 
         private readonly string _path;
         private readonly HttpClient _http;
-        private readonly Dictionary<string, CachedPrice> _prices = new Dictionary<string, CachedPrice>(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, CachedPrice> _prices =
+            new ConcurrentDictionary<string, CachedPrice>(StringComparer.Ordinal);
+        private readonly object _saveLock = new object();
+        private int _hits;
+        private int _fetched;
+        private int _failed;
 
         public PriceCache(string path, HttpClient http)
         {
@@ -59,13 +66,13 @@ namespace WFInfo.Scan
         }
 
         /// <summary>Slugs answered from the cache during this run.</summary>
-        public int Hits { get; private set; }
+        public int Hits => Volatile.Read(ref _hits);
 
         /// <summary>Slugs fetched from warframe.market during this run.</summary>
-        public int Fetched { get; private set; }
+        public int Fetched => Volatile.Read(ref _fetched);
 
         /// <summary>Slugs whose fetch failed (the caller falls back to the sheet).</summary>
-        public int Failed { get; private set; }
+        public int Failed => Volatile.Read(ref _failed);
 
         public int Entries => _prices.Count;
 
@@ -76,7 +83,7 @@ namespace WFInfo.Scan
 
             if (!refresh && _prices.TryGetValue(slug, out CachedPrice cached) && IsFresh(cached, ttl))
             {
-                Hits++;
+                Interlocked.Increment(ref _hits);
                 return new PriceQuote
                 {
                     Plat = cached.Plat,
@@ -89,12 +96,12 @@ namespace WFInfo.Scan
             CachedPrice fetched = await FetchAsync(slug).ConfigureAwait(false);
             if (fetched == null)
             {
-                Failed++;
+                Interlocked.Increment(ref _failed);
                 return null;
             }
 
             _prices[slug] = fetched;
-            Fetched++;
+            Interlocked.Increment(ref _fetched);
             Save();
             return new PriceQuote
             {
@@ -183,17 +190,24 @@ namespace WFInfo.Scan
         /// <summary>Writes the cache through a temp file so a killed scan cannot tear it.</summary>
         public void Save()
         {
-            try
+            lock (_saveLock)
             {
-                var file = new PriceCacheFile { Updated = ScanPaths.Iso(DateTime.UtcNow), Prices = _prices };
-                Directory.CreateDirectory(Path.GetDirectoryName(_path));
-                string temp = _path + ".tmp";
-                File.WriteAllText(temp, JsonConvert.SerializeObject(file, Formatting.Indented));
-                File.Move(temp, _path, overwrite: true);
-            }
-            catch (Exception ex)
-            {
-                Main.AddLog($"Price cache write failed: {ex.Message}");
+                try
+                {
+                    var file = new PriceCacheFile
+                    {
+                        Updated = ScanPaths.Iso(DateTime.UtcNow),
+                        Prices = new Dictionary<string, CachedPrice>(_prices, StringComparer.Ordinal),
+                    };
+                    Directory.CreateDirectory(Path.GetDirectoryName(_path));
+                    string temp = _path + ".tmp";
+                    File.WriteAllText(temp, JsonConvert.SerializeObject(file, Formatting.Indented));
+                    File.Move(temp, _path, overwrite: true);
+                }
+                catch (Exception ex)
+                {
+                    Main.AddLog($"Price cache write failed: {ex.Message}");
+                }
             }
         }
 

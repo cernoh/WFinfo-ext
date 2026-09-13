@@ -53,6 +53,7 @@ nix run .#scan -- --json           # print the record to stdout
 |---|---|
 | `--file <png>` | OCR this screenshot instead of capturing the screen |
 | `--output <name>` | grim output (monitor) to capture; default tries each output, then the joined image |
+| `--theme <name>` | force a UI theme instead of the automatic probe (`auto` restores the probe) |
 | `--refresh` | ignore the local price-cache TTL for this run |
 | `--ttl <hours>` | price-cache lifetime (default 6) |
 | `--no-notify` | skip the desktop notification |
@@ -69,7 +70,9 @@ Each run does this:
 1. Capture: `grim -o <output>` for every output (via `wlr-randr`), stopping at
    the first screen that parses, else the joined image.
 2. OCR: the shared `ProcessRewardScreenForTest` pipeline plus WFInfo's
-   Levenshtein name correction against `market_items.json`.
+   Levenshtein name correction against `market_items.json`. A failed attempt
+   retries once per UI theme, because the theme probe samples a single pixel
+   column. `--theme` pins one theme and skips the retries.
 3. Prices: the local cache answers instantly; missing or stale slugs are fetched
    from warframe.market's public statistics endpoint in parallel. No price is
    invented: the sheet in `market_data.json` is the offline fallback.
@@ -100,6 +103,8 @@ the dashboard's Scan page; `dashboard/src/lib/scan.ts` parses it.
   "ScreenshotWidth": 1920,
   "ScreenshotHeight": 1080,
   "UiScaling": 1.0,
+  "Theme": "STALKER",
+  "ThemeWeight": 0.00398406374501992,
   "Choices": [
     {
       "Index": 1,
@@ -125,6 +130,9 @@ the dashboard's Scan page; `dashboard/src/lib/scan.ts` parses it.
   OCR-corrected market name, `Slug` the warframe.market `url_name`.
 - `PlatSource`: `wfm` (fetched this run), `cache`, `sheet` (offline fallback) or
   `none`.
+- `Theme` is the UI theme used for the extraction: the probe result, the retry
+  that matched, or the forced name. `ThemeWeight` is the probe confidence and is
+  `0` when a theme is forced.
 - `Best`/`BestDucats` follow the Windows overlay ranking; the same entry carries
   `"Best": true`.
 - A scan with no reward screen on screen still writes a record with

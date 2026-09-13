@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 namespace WFInfo.Scan
 {
@@ -33,6 +35,9 @@ namespace WFInfo.Scan
         /// <summary>grim output name (monitor); null captures every output.</summary>
         public string Output { get; private set; }
 
+        /// <summary>Force this UI theme instead of the automatic probe; null = auto.</summary>
+        public WFtheme? Theme { get; private set; }
+
         /// <summary>Ignore the price-cache TTL for this run.</summary>
         public bool Refresh { get; private set; }
 
@@ -61,6 +66,9 @@ namespace WFInfo.Scan
                         break;
                     case "--output":
                         options.Output = RequireValue(args, ref i, arg);
+                        break;
+                    case "--theme":
+                        options.Theme = ParseTheme(RequireValue(args, ref i, arg));
                         break;
                     case "--refresh":
                         options.Refresh = true;
@@ -96,5 +104,26 @@ namespace WFInfo.Scan
                 throw new ArgumentException($"{flag} expects a value");
             return args[++index];
         }
+
+        private static WFtheme ParseTheme(string value)
+        {
+            if (value.Equals("auto", StringComparison.OrdinalIgnoreCase)) return WFtheme.AUTO;
+            if (Enum.TryParse(value, ignoreCase: true, out WFtheme parsed) &&
+                Enum.IsDefined(typeof(WFtheme), parsed) &&
+                parsed != WFtheme.AUTO && parsed != WFtheme.CUSTOM)
+            {
+                return parsed;
+            }
+
+            throw new ArgumentException(
+                $"Unknown theme '{value}' (known: auto, {string.Join(", ", ThemeCandidates())})");
+        }
+
+        /// <summary>Real themes, in enum order: the AUTO/CUSTOM pseudo-members are excluded.</summary>
+        public static IEnumerable<WFtheme> ThemeCandidates() =>
+            Enum.GetValues(typeof(WFtheme)).Cast<WFtheme>().Where(t => t != WFtheme.AUTO && t != WFtheme.CUSTOM);
+
+        /// <summary>Comma-separated theme names, for help text.</summary>
+        public static string ThemeNames() => string.Join(", ", ThemeCandidates());
     }
 }

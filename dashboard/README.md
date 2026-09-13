@@ -11,6 +11,7 @@ Digital Extremes, WFCD, or warframe.market.
 |---|---|
 | `/logs` | Live tail of `debug.log` (newest first, filter box, auto-refresh) |
 | `/recent` | Recently seen prime parts: reward screens parsed from `debug.log` and OCR test-suite results from `ocr_runs/` |
+| `/scan` | Newest OCR reward-screen scan: which part to take for the best platinum return, every priced choice, and the captured screenshot |
 | `/wfmarket` | Cached prime-part prices (plat, volume, ducats) with search and sort; select a part for live 90-day statistics |
 
 ## Quick start
@@ -39,9 +40,28 @@ The dashboard reads WFInfo's local application data and never writes to it:
   runner on every `--test` run: `latest.json` plus a timestamped file).
 - `<data dir>/WFInfo/market_items.json` + `market_data.json` — cached market
   catalog and price sheet (downloaded by the app or the headless runner).
+- `<data dir>/WFInfo/scans/` — newest OCR scan record (`latest.json`) and the
+  captured screenshot (`last.png`), written by the headless scanner.
 
 On Linux the data dir resolves to `~/.config/WFInfo` (or the XDG config home).
 Set `WFINFO_DATA_DIR` to override, exactly as the headless runner does.
+
+## Live scan
+
+The `/scan` page shows the newest reward-screen scan: the part worth taking
+for the best platinum return, every choice the OCR recognised with its
+platinum price and ducats, and the screenshot the prices came from. The page
+refreshes automatically while visible, so a scan triggered by the scan hotkey
+appears without a reload.
+
+Scans are produced by the headless scanner:
+
+```bash
+nix run .#scan
+```
+
+The dashboard only reads the scan record and screenshot; it never writes to
+the data dir.
 
 ## Checks
 

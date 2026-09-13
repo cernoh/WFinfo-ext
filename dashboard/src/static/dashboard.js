@@ -4,6 +4,8 @@
  *   client-side text filter that survives refreshes.
  * - Recently seen page: re-fetch /api/reward-events and /api/ocr-runs every
  *   10s and re-render the two card lists.
+ * - Scan page: re-fetch /api/scan every 3s and swap in the re-rendered body,
+ *   so a hotkey-triggered scan appears without a reload.
  *
  * Polling pauses while the tab is hidden. All dynamic text is escaped.
  */
@@ -265,6 +267,43 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Scan                                                                */
+  /* ------------------------------------------------------------------ */
+
+  var scanTimer = null;
+
+  function scheduleScanPoll(delayMs) {
+    clearTimeout(scanTimer);
+    scanTimer = setTimeout(pollScan, delayMs);
+  }
+  function pollScan() {
+    var bodyEl = $("wf-scan-body");
+    if (!bodyEl) return;
+    fetchJson("/api/scan").then(function (data) {
+      if (data && data.body) {
+        // The server renders the same markup the page was built with, so the
+        // empty-state inset toggling happens on the server side.
+        bodyEl.innerHTML = data.body;
+      }
+      scheduleScanPoll(3000);
+    }).catch(function () {
+      scheduleScanPoll(5000);
+    });
+  }
+
+  function initScan() {
+    if (!$("wf-scan-body")) return;
+    document.addEventListener("visibilitychange", function () {
+      if (scanTimer) {
+        clearTimeout(scanTimer);
+        scanTimer = null;
+      }
+      if (!document.hidden) scheduleScanPoll(500);
+    });
+    scheduleScanPoll(3000);
+  }
+
+  /* ------------------------------------------------------------------ */
 
   function init() {
     if (window.GOVUKFrontend && GOVUKFrontend.initAll) {
@@ -272,6 +311,7 @@
     }
     initLogs();
     initRecent();
+    initScan();
   }
 
   if (document.readyState === "loading") {

@@ -24,6 +24,12 @@ namespace WFInfo.Scan
         [JsonProperty("ScreenshotWidth")] public int ScreenshotWidth { get; set; }
         [JsonProperty("ScreenshotHeight")] public int ScreenshotHeight { get; set; }
         [JsonProperty("UiScaling")] public double UiScaling { get; set; }
+
+        /// <summary>UI theme used for the extraction ("AUTO" probe result or a forced theme).</summary>
+        [JsonProperty("Theme")] public string Theme { get; set; }
+
+        /// <summary>Confidence of the automatic theme probe (0 when a theme was forced).</summary>
+        [JsonProperty("ThemeWeight")] public double ThemeWeight { get; set; }
         [JsonProperty("Choices")] public List<ScanChoice> Choices { get; set; } = new List<ScanChoice>();
         [JsonProperty("Best")] public ScanBest Best { get; set; }
         [JsonProperty("BestDucats")] public ScanBestDucats BestDucats { get; set; }

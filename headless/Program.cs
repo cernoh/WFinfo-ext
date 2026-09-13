@@ -260,7 +260,7 @@ namespace WFInfo
                             Console.Error.WriteLine("WARNING: " + sheetWarning);
 
                         var cache = new PriceCache(ScanPaths.PriceCache, http);
-                        var runner = new ScanRunner(options, windowService, sheet, cache);
+                        var runner = new ScanRunner(options, windowService, sheet, cache, settings);
                         return await runner.RunAsync().ConfigureAwait(false);
                     }
                 }
@@ -302,6 +302,8 @@ namespace WFInfo
             Console.WriteLine();
             Console.WriteLine("  --file <png>      OCR this screenshot instead of capturing the screen");
             Console.WriteLine("  --output <name>   grim output (monitor) to capture; default tries every output");
+            Console.WriteLine("  --theme <name>    force a UI theme instead of the automatic probe");
+            Console.WriteLine("                    (auto | " + ScanOptions.ThemeNames() + ")");
             Console.WriteLine("  --refresh         ignore the local price-cache TTL for this run");
             Console.WriteLine("  --ttl <hours>     price-cache lifetime in hours (default 6)");
             Console.WriteLine("  --no-notify       do not post the desktop notification");

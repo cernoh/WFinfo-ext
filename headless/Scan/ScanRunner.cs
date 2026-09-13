@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using WFInfo.Services.WindowInfo;
+using WFInfo.Settings;
 
 namespace WFInfo.Scan
 {
@@ -30,13 +31,15 @@ namespace WFInfo.Scan
         private readonly IWindowInfoService _window;
         private readonly MarketSheet _sheet;
         private readonly PriceCache _cache;
+        private readonly ApplicationSettings _settings;
 
-        public ScanRunner(ScanOptions options, IWindowInfoService window, MarketSheet sheet, PriceCache cache)
+        public ScanRunner(ScanOptions options, IWindowInfoService window, MarketSheet sheet, PriceCache cache, ApplicationSettings settings)
         {
             _options = options;
             _window = window;
             _sheet = sheet;
             _cache = cache;
+            _settings = settings;
         }
 
         /// <summary>Runs the scan; returns 0 when a record was produced, 1 when capture/OCR failed.</summary>
@@ -57,6 +60,8 @@ namespace WFInfo.Scan
             string acceptedTarget = null;
             bool acceptedIsTemporary = false;
             var acceptedParts = new List<string>();
+            string acceptedTheme = null;
+            double acceptedThemeWeight = 0;
 
             try
             {
@@ -87,17 +92,7 @@ namespace WFInfo.Scan
                     continue;
                 }
 
-                List<string> parts;
-                try
-                {
-                    parts = OCR.ProcessRewardScreenForTest(bitmap, _window) ?? new List<string>();
-                }
-                catch (Exception ex)
-                {
-                    parts = new List<string>();
-                    lastError = "OCR failed: " + ex.Message;
-                }
-
+                List<string> parts = RecognizeParts(bitmap, out string themeUsed, out double themeWeight);
                 if (acceptedImage == null || parts.Count > acceptedParts.Count)
                 {
                     acceptedImage?.Dispose();
@@ -110,6 +105,8 @@ namespace WFInfo.Scan
                         ? candidate.Path
                         : (string.IsNullOrEmpty(candidate.Target) ? "all" : candidate.Target);
                     acceptedParts = parts;
+                    acceptedTheme = themeUsed;
+                    acceptedThemeWeight = themeWeight;
                 }
                 else
                 {
@@ -130,6 +127,8 @@ namespace WFInfo.Scan
                 result.ScreenshotWidth = acceptedImage.Width;
                 result.ScreenshotHeight = acceptedImage.Height;
                 result.UiScaling = OCR.uiScaling;
+                result.Theme = acceptedTheme;
+                result.ThemeWeight = acceptedThemeWeight;
 
                 result.ScreenshotPath = StoreScreenshot(acceptedPath) ?? acceptedPath;
                 result.Choices = await PriceChoicesAsync(acceptedParts).ConfigureAwait(false);
@@ -149,6 +148,8 @@ namespace WFInfo.Scan
 
             result.FinishedAt = ScanPaths.Iso(DateTime.UtcNow);
             result.DurationMs = watch.ElapsedMilliseconds;
+
+            CleanTempDirectory();
 
             Persist(result);
             Print(result);
@@ -240,6 +241,63 @@ namespace WFInfo.Scan
                 choices.Add(choice);
             }
             return choices;
+        }
+
+        /// <summary>
+        /// OCRs the reward strip on one screenshot.
+        ///
+        /// The theme probe samples a single pixel column, so it misses when the UI
+        /// scale differs, the capture is cropped, or the theme is new; the row
+        /// filter then rejects every row and nothing is recognised. A failed
+        /// attempt therefore retries once per theme before giving up. `--theme`
+        /// pins the theme and skips the probe (and the retries).
+        /// </summary>
+        private List<string> RecognizeParts(Bitmap image, out string themeUsed, out double themeWeight)
+        {
+            WFtheme detected = OCR.GetThemeWeighted(out themeWeight, image);
+            themeUsed = detected.ToString();
+
+            if (_options.Theme != null && _options.Theme != WFtheme.AUTO)
+            {
+                themeUsed = _options.Theme.Value.ToString();
+                _settings.ThemeSelection = _options.Theme.Value;
+                List<string> pinned = ExtractParts(image);
+                _settings.ThemeSelection = WFtheme.AUTO;
+                return pinned;
+            }
+
+            List<string> parts = ExtractParts(image);
+            if (parts.Count > 0) return parts;
+
+            foreach (WFtheme theme in ScanOptions.ThemeCandidates())
+            {
+                if (theme == detected) continue;
+
+                _settings.ThemeSelection = theme;
+                List<string> attempt = ExtractParts(image);
+                if (attempt.Count > 0)
+                {
+                    themeUsed = theme.ToString();
+                    parts = attempt;
+                    break;
+                }
+            }
+
+            _settings.ThemeSelection = WFtheme.AUTO;
+            return parts;
+        }
+
+        private List<string> ExtractParts(Bitmap image)
+        {
+            try
+            {
+                return OCR.ProcessRewardScreenForTest(image, _window) ?? new List<string>();
+            }
+            catch (Exception ex)
+            {
+                Main.AddLog("Reward extraction failed: " + ex.Message);
+                return new List<string>();
+            }
         }
 
         /// <summary>
@@ -443,6 +501,20 @@ namespace WFInfo.Scan
             catch
             {
                 // temp files are best-effort
+            }
+        }
+
+        /// <summary>Removes the per-run capture directory (files are already gone).</summary>
+        private static void CleanTempDirectory()
+        {
+            try
+            {
+                string directory = Path.Combine(Path.GetTempPath(), "wfinfo-scan-" + Environment.ProcessId);
+                if (Directory.Exists(directory)) Directory.Delete(directory, recursive: true);
+            }
+            catch
+            {
+                // best-effort
             }
         }
 

@@ -246,3 +246,23 @@ a.wf-chip:hover {
 .wf-key--avg {
   background: #d4351c;
 }
+
+/* Scan page ----------------------------------------------------------- */
+
+.wf-scan-shot {
+  margin: 8px 0 20px;
+}
+
+.wf-scan-shot a {
+  display: inline-block;
+  margin-bottom: 6px;
+}
+
+.wf-scan-shot__img {
+  max-width: 480px;
+  width: 100%;
+  height: auto;
+  border: 1px solid #b1b4b6;
+  display: block;
+  background: #ffffff;
+}

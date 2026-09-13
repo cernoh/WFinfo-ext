@@ -2,21 +2,25 @@
 
 ## Purpose
 
-`dashboard/` is the Warframe Info web dashboard: a Deno server styled with GOV.UK
-Frontend that opens in a browser and presents WFInfo's local application data —
-OCR logs, OCR test-suite results, and cached market prices. It is an
-"independent digital service" (see `src/static/warframe-info-logo.webp`): no
-crown crest, no affiliation claims.
+`dashboard/` is the Warframe Info web dashboard: a Deno server styled with
+GOV.UK Frontend that opens in a browser and presents WFInfo's local application
+data — OCR logs, OCR test-suite results, cached market prices, and the newest
+OCR reward-screen scan. It is an "independent digital service" (see
+`src/static/warframe-info-logo.webp`): no crown crest, no affiliation claims.
 
 ## Ownership
 
 - `deno.json` — tasks (`start`, `dev`, `check`, `test`, `fmt`, `lint`) and
   fmt/lint exclusions (AGENTS.md, README.md, `src/static`).
-- `src/main.ts` — HTTP server: routing, env config (`PORT`, `WFINFO_DATA_DIR`,
+- `src/main.ts` — HTTP server: routing (including `/scan`, `/api/scan` and
+  `/scan/screenshot`), env config (`PORT`, `WFINFO_DATA_DIR`,
   `WFINFO_GOVUK_DIR`, `WFINFO_CACHE_DIR`), file reading, API endpoints.
 - `src/lib/fsdata.ts` — app-data dir resolution (mirrors headless
   `ConfigureEnvironment`), `debug.log` tail/parse helpers, OCR suite-result
   parsing.
+- `src/lib/scan.ts` — scan-record parsing: `parseScanResult` for the
+  `scans/latest.json` contract, plus best-choice resolution with the contract
+  tie rules (highest plat, then higher ducats, then the later index).
 - `src/lib/recent.ts` — reward-screen event extraction from log lines
   ("…, detected choice: N").
 - `src/lib/items.ts` — market DB parsing: `market_items.json` slug catalog,
@@ -58,8 +62,9 @@ crown crest, no affiliation claims.
   request; set `WFINFO_GOVUK_DIR` to an unpacked dist/govuk for offline use.
 - Data provenance (read-only): `debug.log` (reward screens + app activity),
   `ocr_runs/*.json` (headless `--test` persistence), `market_items.json` and
-  `market_data.json` (cached market DBs). The dashboard never writes to the
-  data dir.
+  `market_data.json` (cached market DBs), `scans/latest.json` and
+  `scans/last.png` (headless `--scan` records and capture). The dashboard
+  never writes to the data dir.
 
 ## Verification
 
@@ -67,8 +72,8 @@ crown crest, no affiliation claims.
 - `cd dashboard && deno test -A src` — offline unit tests.
 - `nix flake check` (repo root) — format/typecheck/unit-test gates in a
   sandbox.
-- Live smoke: run the server, then fetch `/logs`, `/recent`, `/wfmarket`, and
-  a `/wfmarket/<slug>` detail page in a browser.
+- Live smoke: run the server, then fetch `/logs`, `/recent`, `/scan`,
+  `/wfmarket`, and a `/wfmarket/<slug>` detail page in a browser.
 
 ## Child DOX Index
 
