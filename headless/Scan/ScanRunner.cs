@@ -27,6 +27,9 @@ namespace WFInfo.Scan
         /// <summary>Run files kept next to latest.json (mirrors the OCR-suite retention).</summary>
         private const int RetentionFiles = 60;
 
+        /// <summary>Pause between captures while a triggered scan waits for the panel.</summary>
+        private const int CaptureRetryIntervalMs = 400;
+
         private readonly ScanOptions _options;
         private readonly IWindowInfoService _window;
         private readonly MarketSheet _sheet;
@@ -73,48 +76,60 @@ namespace WFInfo.Scan
                 return 1;
             }
 
-            foreach (CaptureCandidate candidate in BuildCandidates())
+            // The game announces a reward screen before the panel is on screen
+            // (the EE.log watcher keys on the announcement), so a triggered scan
+            // re-captures until a part is recognised or the wait budget is spent.
+            DateTime attemptDeadline = startedUtc.AddSeconds(_options.WaitSeconds);
+            while (true)
             {
-                if (candidate.Kind == "grim")
+                foreach (CaptureCandidate candidate in BuildCandidates())
                 {
-                    if (!ScreenCapture.Capture(candidate.Output, candidate.Region, candidate.Path, out string captureError))
+                    if (candidate.Kind == "grim")
                     {
-                        lastError = captureError;
+                        if (!ScreenCapture.Capture(candidate.Output, candidate.Region, candidate.Path, out string captureError))
+                        {
+                            lastError = captureError;
+                            continue;
+                        }
+                    }
+
+                    Bitmap bitmap = TryLoad(candidate.Path, out string loadError);
+                    if (bitmap == null)
+                    {
+                        lastError = loadError;
+                        if (candidate.Kind == "grim") TryDelete(candidate.Path);
                         continue;
                     }
+
+                    List<string> parts = RecognizeParts(bitmap, out string themeUsed, out double themeWeight);
+                    if (acceptedImage == null || parts.Count > acceptedParts.Count)
+                    {
+                        acceptedImage?.Dispose();
+                        if (acceptedIsTemporary) TryDelete(acceptedPath);
+
+                        acceptedImage = bitmap;
+                        acceptedPath = candidate.Path;
+                        acceptedIsTemporary = candidate.Kind == "grim";
+                        acceptedTarget = candidate.Kind == "file"
+                            ? candidate.Path
+                            : candidate.Label;
+                        acceptedParts = parts;
+                        acceptedTheme = themeUsed;
+                        acceptedThemeWeight = themeWeight;
+                    }
+                    else
+                    {
+                        bitmap.Dispose();
+                        if (candidate.Kind == "grim") TryDelete(candidate.Path);
+                    }
+
+                    if (acceptedParts.Count >= PartsGoodEnough) break;
                 }
 
-                Bitmap bitmap = TryLoad(candidate.Path, out string loadError);
-                if (bitmap == null)
-                {
-                    lastError = loadError;
-                    if (candidate.Kind == "grim") TryDelete(candidate.Path);
-                    continue;
-                }
+                if (acceptedParts.Count > 0) break;
+                if (DateTime.UtcNow >= attemptDeadline) break;
 
-                List<string> parts = RecognizeParts(bitmap, out string themeUsed, out double themeWeight);
-                if (acceptedImage == null || parts.Count > acceptedParts.Count)
-                {
-                    acceptedImage?.Dispose();
-                    if (acceptedIsTemporary) TryDelete(acceptedPath);
-
-                    acceptedImage = bitmap;
-                    acceptedPath = candidate.Path;
-                    acceptedIsTemporary = candidate.Kind == "grim";
-                    acceptedTarget = candidate.Kind == "file"
-                        ? candidate.Path
-                        : candidate.Label;
-                    acceptedParts = parts;
-                    acceptedTheme = themeUsed;
-                    acceptedThemeWeight = themeWeight;
-                }
-                else
-                {
-                    bitmap.Dispose();
-                    if (candidate.Kind == "grim") TryDelete(candidate.Path);
-                }
-
-                if (acceptedParts.Count >= PartsGoodEnough) break;
+                await Task.Delay(CaptureRetryIntervalMs).ConfigureAwait(false);
             }
 
             if (acceptedImage == null)

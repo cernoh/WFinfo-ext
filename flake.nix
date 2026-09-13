@@ -181,6 +181,36 @@ ${pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "export 
           meta.description = "Warframe Info reward-screen scan (OCR, prices, notification)";
         };
 
+        # Automatic scanning: watch Warframe's EE.log and scan on every reward
+        # screen, the Linux equivalent of the Windows app's "Auto" mode. The
+        # engines and price cache are built once, so each triggered scan is one
+        # capture plus the OCR. Start it with the session (mango):
+        #
+        #   exec,nix run /path/to/WFinfo-ext#scan-watch
+        #
+        # Extra arguments go to the scan, e.g. `-- --output DP-2`.
+        scan-watch = {
+          type = "app";
+          program =
+            "${pkgs.writeShellScriptBin "wfscan-watch" ''
+              set -eu
+              root="''${WFINFO_SCAN_ROOT:-$PWD}"
+              if [ ! -f "$root/headless/WFInfo.Headless.csproj" ]; then
+                echo "wfscan-watch: no headless/WFInfo.Headless.csproj under $root" >&2
+                echo "Run from the WFinfo-ext checkout, or set WFINFO_SCAN_ROOT." >&2
+                exit 1
+              fi
+              export PATH="${pkgs.lib.makeBinPath (scanTools pkgs)}:''${PATH:-}"
+${pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "export ${name}=${pkgs.lib.escapeShellArg value}") (headlessRuntime pkgs))}
+              cd "$root"
+              dotnet build -c Release -v:q --nologo headless/WFInfo.Headless.csproj
+              # exec: the watch loop must receive SIGINT/SIGTERM itself, so the
+              # window manager or the terminal stops it instead of this wrapper.
+              exec dotnet headless/bin/Release/net9.0/WFInfo.Headless.dll --scan --watch "$@"
+            ''}/bin/wfscan-watch";
+          meta.description = "Warframe Info automatic reward-screen scan (EE.log watch)";
+        };
+
         dashboard = {
           type = "app";
           program = "${pkgs.writeShellScriptBin "wfinfo-dashboard" ''

@@ -27,6 +27,7 @@ The dev shell wires up native `libtesseract50.so`/`libleptonica-1.82.0.so`
 | `--theme-test <folder> [uiScale]` (`--theme-debug` also works) | theme detection over PNGs |
 | `--selfcheck` | renders sample text and OCRs it — verifies natives + tessdata + imaging |
 | `--scan [options]` | reward-screen scan: capture, OCR, price, notify, record |
+| `--scan --watch` | scan automatically on every reward screen (EE.log), until stopped |
 
 Every `--test` run also persists its results to the WFInfo data dir under
 `ocr_runs/` (`latest.json` plus a timestamped copy; the newest 60 are kept).
@@ -96,6 +97,46 @@ warframe.market slug (`plat`, 48-hour `volume`, `fetchedAt`). Failed fetches are
 not cached, so a network hiccup retries on the next scan instead of pinning a
 stale price.
 
+### Automatic scanning (EE.log watch)
+
+The Windows app has an "Auto" mode: it reads Warframe's debug log and shows the
+overlay as soon as the game reports a reward screen. `--watch` is the Linux
+equivalent — it tails `EE.log` in the Proton prefix and runs a scan for every
+reward screen. The trigger is the same message the Windows watcher keys on,
+`ProjectionRewardChoice.lua: Got rewards`.
+
+```bash
+nix run .#scan-watch                          # watch, notify on every reward screen
+nix run .#scan-watch -- --output DP-2         # ...capturing one monitor
+nix run .#scan-watch -- --once                # scan on the first trigger, then exit
+nix run .#scan-watch -- --log /path/EE.log    # watch a specific log
+```
+
+| Option | Effect |
+|---|---|
+| `--watch` | keep running and scan on every reward screen |
+| `--once` | scan on the first trigger, then exit (implies `--watch`) |
+| `--log <path>` | EE.log to watch; default is the Steam/Proton prefix, else `$WFINFO_EE_LOG` |
+| `--wait <seconds>` | keep re-capturing until a part is recognised (default 10 in watch mode) |
+| `--cooldown <seconds>` | ignore further triggers for this long after a scan starts (default 5) |
+
+The engines, market sheet and price cache are built once at start-up, so a
+triggered scan is one capture plus the OCR — about a second with a warm price
+cache.
+
+The game writes the trigger line *before* the reward panel is on screen, so a
+triggered scan re-captures every 400 ms until a part is recognised or `--wait`
+runs out. A capture that finds nothing yet writes no record, so the dashboard
+only shows scans whose names were read.
+
+Bind the watch to a session start (mango example):
+
+```
+exec,nix run /path/to/WFinfo-ext#scan-watch
+```
+
+Stop it with Ctrl-C; it also exits on `SIGTERM`.
+
 ### Scan record
 
 `scans/latest.json` (and each `scans/scan-<stamp>.json`) is the contract with
@@ -154,6 +195,8 @@ the dashboard's Scan page; `dashboard/src/lib/scan.ts` parses it.
   `libleptonica-1.82.0.so` (set by `nix develop`; override for other distros).
 - `WFINFO_DATA_DIR` — application-data root override. tessdata and the market
   databases are stored under `<data dir>/WFInfo` (default: OS XDG config dir).
+- `WFINFO_EE_LOG` — path to Warframe's `EE.log` for `--watch`; overrides the
+  Steam/Proton prefix search (same as `--log`).
 
 ## Architecture
 
