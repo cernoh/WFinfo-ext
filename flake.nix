@@ -13,6 +13,7 @@
   #   nix develop -c dotnet run --project headless -- --test tests/map.json out.json
   #   cd dashboard && deno task dev       -> dashboard on :8000 (inside nix develop)
   #   nix run .#dashboard                 -> dashboard app
+  #   nix run .#dev-all                   -> dashboard live reload + scan-on-edit backend
   #   nix run .#tesseract-native          -> native-library farm path (usable in CI)
 
   inputs = {
@@ -75,6 +76,9 @@
       # Binaries the scan path shells out to: capture (grim + output list),
       # the notification (notify-send) and the SDK that builds the runner.
       scanTools = pkgs: with pkgs; [ dotnet-sdk_9 grim wlr-randr libnotify ];
+
+      # The dev stack uses the scan tools plus the dashboard runtime.
+      devTools = pkgs: (scanTools pkgs) ++ [ pkgs.deno ];
     in
     {
       packages = forAllSystems (pkgs: {
@@ -110,6 +114,7 @@
             echo "  try: dotnet run --project headless -- --scan --no-notify   (reward-screen scan)"
             echo "  try: dotnet run --project headless -- --test tests/map.json out.json"
             echo "  try: cd dashboard && deno task dev   (Warframe Info dashboard on :8000)"
+            echo "  try: nix run .#dev-all               (dashboard live reload + scan on backend edits)"
           '';
         };
       });
@@ -173,6 +178,59 @@ ${pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "export 
           program = toString (pkgs.writeShellScriptBin "wfinfo-dashboard" ''
             exec ${pkgs.deno}/bin/deno run -A ${self}/dashboard/src/main.ts "$@"
           '');
+        };
+
+        # Full dev stack in one terminal: the dashboard frontend with live
+        # reload, plus the headless backend rebuilt and re-run (reward-screen
+        # scan) after every backend source edit. Ctrl-C stops both.
+        #
+        # The backend scan writes the same `<data dir>/WFInfo/scans/` record the
+        # hotkey writes, so the dashboard's Scan page shows the current backend
+        # output. Notifications stay off: one toast per edit is noise. Use
+        # `nix run .#scan` for the notifying path.
+        #
+        # Extra arguments go to the scan:
+        #   nix run .#dev-all -- --file docs/images/window.png
+        #
+        # Both watchers must watch the working tree, so run it from the checkout
+        # (override with WFINFO_DEV_ROOT).
+        dev-all = {
+          type = "app";
+          program =
+            "${pkgs.writeShellScriptBin "wfinfo-dev-all" ''
+              set -eu
+              root="''${WFINFO_DEV_ROOT:-$PWD}"
+              if [ ! -f "$root/headless/WFInfo.Headless.csproj" ] || [ ! -f "$root/dashboard/src/main.ts" ]; then
+                echo "wfinfo-dev-all: no headless/WFInfo.Headless.csproj or dashboard/src/main.ts under $root" >&2
+                echo "Run from the WFInfo-ext checkout, or set WFINFO_DEV_ROOT." >&2
+                exit 1
+              fi
+              export PATH="${pkgs.lib.makeBinPath (devTools pkgs)}:''${PATH:-}"
+              export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
+${pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "export ${name}=${pkgs.lib.escapeShellArg value}") (headlessRuntime pkgs))}
+              cd "$root"
+
+              pids=()
+              stop() {
+                trap - INT TERM EXIT
+                if [ "''${#pids[@]}" -gt 0 ]; then
+                  kill "''${pids[@]}" 2>/dev/null || true
+                fi
+                wait 2>/dev/null || true
+              }
+              trap stop INT TERM EXIT
+
+              echo "wfinfo-dev-all: backend  dotnet watch --scan (notifications off)"
+              dotnet watch --project headless/WFInfo.Headless.csproj run -- --scan --no-notify "$@" &
+              pids+=($!)
+
+              echo "wfinfo-dev-all: frontend http://localhost:''${PORT:-8000}   (deno --watch)"
+              deno run -A --watch dashboard/src/main.ts &
+              pids+=($!)
+
+              wait -n
+            ''}/bin/wfinfo-dev-all";
+          meta.description = "Warframe Info dev stack (dashboard live reload + headless scan on backend edits)";
         };
       });
     };

@@ -71,6 +71,9 @@ code type-checks without WPF/WinForms/Win32.
 ## Work Guidance
 
 - Build/run inside the flake dev shell: `nix develop -c dotnet ...`.
+- The dev stack (`nix run .#dev-all`) rebuilds and re-runs `--scan` after every
+  edit here, next to the live-reload dashboard. It passes `--no-notify` so one
+  scan per edit does not post a notification.
 - Self-check renders "Volt Prime Blueprint" and OCRs it — the fastest end-to-end
   proof that natives, tessdata, and imaging work on the current machine.
 - `tests/data/*.png` fixtures are currently absent from the repo; until they

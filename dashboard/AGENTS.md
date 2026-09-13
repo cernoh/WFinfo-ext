@@ -57,6 +57,9 @@ OCR reward-screen scan. It is an "independent digital service" (see
   - `cd dashboard && deno task dev` — watch server on http://localhost:8000
   - `deno task start` / `deno task check` / `deno task test` / `deno task fmt`
   - `nix run .#dashboard` — run the app from the flake
+  - `nix run .#dev-all` — this dashboard with live reload, plus the headless
+    backend rebuilt and re-run (scan) on every backend edit. Extra arguments
+    go to the scan
 - If port 8000 is busy, set `PORT` (e.g. `PORT=8765 deno task start`).
 - GOV.UK assets download to `~/.cache/wfinfo-dashboard/govuk-6.5.0` on first
   request; set `WFINFO_GOVUK_DIR` to an unpacked dist/govuk for offline use.
