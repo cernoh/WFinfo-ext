@@ -72,6 +72,28 @@ Bind the scan to a key in your window manager. Example for mango or dwl:
 None,Print,spawn_shell,nix run /path/to/WFinfo-ext#scan
 ```
 
+### Automatic scanning
+
+The Windows app has an "Auto" mode that watches Warframe's `EE.log` and shows
+the overlay as soon as the game reports a reward screen. `.#scan-watch` is the
+Linux equivalent: it tails `EE.log` and runs a scan for every reward screen, so
+no key press is needed.
+
+```bash
+nix run .#scan-watch                    # scan automatically, notify each time
+nix run .#scan-watch -- --output DP-2   # ...capturing one monitor
+nix run .#scan-watch -- --once          # scan on the first trigger, then exit
+```
+
+Start it with the session:
+
+```
+exec,nix run /path/to/WFinfo-ext#scan-watch
+```
+
+The OCR engines and price cache are built once, so each triggered scan is one
+capture plus the OCR — about a second once the cache is warm.
+
 The complete option list and the record schema are in `headless/README.md`.
 
 ## Warframe Info dashboard

@@ -20,9 +20,10 @@ code type-checks without WPF/WinForms/Win32.
   `<app dir>/scans/latest.json` (same retention) plus `scans/last.png`.
 - `Scan/` — the reward-screen scan feature (Linux-only, real behavior):
   `ScanRunner.cs` (capture → OCR → price → recommend → persist → notify),
-  `ScreenCapture.cs` (grim + wlr-randr), `PriceCache.cs` (local platinum cache
-  with on-demand warframe.market refresh), `MarketSheet.cs` (indexes
-  `market_items.json`/`market_data.json`), `Notifier.cs` (notify-send),
+  `ScreenCapture.cs` (grim + wlr-randr), `EeLog.cs` (EE.log discovery + tail),
+  `ScanWatcher.cs` (EE.log-driven automatic scanning), `PriceCache.cs` (local
+  platinum cache with on-demand warframe.market refresh), `MarketSheet.cs`
+  (indexes `market_items.json`/`market_data.json`), `Notifier.cs` (notify-send),
   `ScanModels.cs`/`ScanOptions.cs`/`Shell.cs`. The record shape is a contract
   with the dashboard's Scan page: the field list is in `README.md` (Scan) and
   the reader is `dashboard/src/lib/scan.ts` — change both together.
@@ -30,6 +31,11 @@ code type-checks without WPF/WinForms/Win32.
   `--region "X,Y WxH"` (one layout region, i.e. a window frame), `--output`
   (one monitor), else every output then the joined image. Region coordinates are
   the compositor's own client geometry, so no conversion is needed.
+- `--watch` scans automatically: `ScanWatcher` tails EE.log and runs a scan per
+  "Got rewards" line. The game writes that line before the panel is on screen,
+  so a triggered scan re-captures until a part is recognised (or `--wait`
+  expires) and writes no record for a screen it could not read. EE.log lives in
+  the Steam/Proton prefix; `--log`/`$WFINFO_EE_LOG` override the search.
 - `Platform/` — seams ONLY: `HeadlessMain.cs` (stub `Main`), `HeadlessServices.cs`
   (window-info service, process finder, screenshot/log-capture stubs,
   `CustomEntrypoint` helpers), `UiSurrogates.cs` (WPF window shapes),
@@ -106,6 +112,11 @@ code type-checks without WPF/WinForms/Win32.
 - `nix develop -c dotnet run --project headless -- --scan --no-notify --file <png>`
   — prices an existing screenshot; the second run with the same PNG must report
   cache hits instead of fetches.
+- `nix develop -c dotnet run --project headless -- --scan --watch --once --log
+  <path> --no-notify` — with a reward screen on the captured output, appending a
+  line containing "Got rewards" to `<path>` must produce one priced record and
+  exit 0. This is the trigger-path check that needs no game session; verify it
+  before claiming the watch works.
 
 ## Child DOX Index
 

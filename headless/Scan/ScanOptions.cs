@@ -64,6 +64,34 @@ namespace WFInfo.Scan
         /// <summary>Print the scan record JSON to stdout.</summary>
         public bool PrintJson { get; private set; }
 
+        /// <summary>
+        /// Keep running: watch Warframe's EE.log and scan each time the game
+        /// shows a reward screen, instead of scanning once.
+        /// </summary>
+        public bool Watch { get; private set; }
+
+        /// <summary>
+        /// Watch mode: scan on the first trigger, then exit. Used to prove the
+        /// trigger path without a game session.
+        /// </summary>
+        public bool Once { get; private set; }
+
+        /// <summary>Explicit EE.log path; null auto-detects the Proton prefix.</summary>
+        public string LogPath { get; private set; }
+
+        /// <summary>
+        /// Seconds to keep re-capturing after a trigger until at least one
+        /// reward part is recognised. The game writes the trigger line before
+        /// the reward panel is on screen, so a single capture races it.
+        /// Default 10 in watch mode, 0 (one capture) otherwise.
+        /// </summary>
+        public double WaitSeconds => _waitSeconds ?? (Watch ? 10 : 0);
+
+        private double? _waitSeconds;
+
+        /// <summary>Seconds a fresh trigger is ignored after a scan starts.</summary>
+        public double CooldownSeconds { get; private set; } = 5;
+
         public bool Help { get; private set; }
 
         /// <summary>Parses scan arguments; throws <see cref="ArgumentException"/> on bad input.</summary>
@@ -104,6 +132,21 @@ namespace WFInfo.Scan
                     case "--json":
                         options.PrintJson = true;
                         break;
+                    case "--watch":
+                        options.Watch = true;
+                        break;
+                    case "--once":
+                        options.Once = true;
+                        break;
+                    case "--log":
+                        options.LogPath = RequireValue(args, ref i, arg);
+                        break;
+                    case "--wait":
+                        options._waitSeconds = ParseSeconds(RequireValue(args, ref i, arg), arg);
+                        break;
+                    case "--cooldown":
+                        options.CooldownSeconds = ParseSeconds(RequireValue(args, ref i, arg), arg);
+                        break;
                     case "-h":
                     case "--help":
                         options.Help = true;
@@ -113,6 +156,11 @@ namespace WFInfo.Scan
                 }
             }
 
+            // --once is a bounded watch: wait for one trigger, scan, exit.
+            if (options.Once) options.Watch = true;
+            if (options.Watch && options.File != null)
+                throw new ArgumentException("--watch reads the live screen; --file cannot be combined with it");
+
             return options;
         }
 
@@ -121,6 +169,17 @@ namespace WFInfo.Scan
             if (index + 1 >= args.Length)
                 throw new ArgumentException($"{flag} expects a value");
             return args[++index];
+        }
+
+        /// <summary>Parses a non-negative seconds value; throws on bad input.</summary>
+        private static double ParseSeconds(string value, string flag)
+        {
+            if (!double.TryParse(value, System.Globalization.NumberStyles.Float,
+                    System.Globalization.CultureInfo.InvariantCulture, out double seconds) || seconds < 0)
+            {
+                throw new ArgumentException($"{flag} expects a number of seconds >= 0, got '{value}'");
+            }
+            return seconds;
         }
 
         /// <summary>grim -g accepts "X,Y WxH" in layout coordinates; anything else is a typo.</summary>

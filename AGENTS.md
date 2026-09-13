@@ -43,6 +43,8 @@ and can start a reward-screen scan from its Scan page.
 - `WFInfo/` — Windows desktop app AND the shared core sources (Ocr.cs, Data.cs,
   LanguageProcessing/, Services/, Settings/, Tests/). Child: `WFInfo/AGENTS.md`.
 - `headless/` — Linux-native runner project + platform seams. Child: `headless/AGENTS.md`.
+  Carries the reward-screen scan (`--scan`) and its automatic EE.log-driven mode
+  (`--scan --watch`).
 - `dashboard/` — Deno + GOV.UK Frontend web dashboard over local WFInfo data
   (logs, OCR runs, market DBs), plus the browser-triggered scan button.
   Child: `dashboard/AGENTS.md`.
@@ -85,6 +87,10 @@ Run inside `nix develop`:
   (grim capture + OCR + prices; writes `<app dir>/scans/latest.json`).
 - `nix run .#scan` — the same scan through the flake, for a window-manager
   hotkey (`--file <png>` prices an existing screenshot).
+- `nix run .#scan-watch` — automatic scanning: tail Warframe's `EE.log`
+  (Steam/Proton prefix, or `--log`/`$WFINFO_EE_LOG`) and scan on every reward
+  screen. `--once` scans on the first trigger and exits, which proves the
+  trigger path without a game session.
 
 Dashboard (Deno, also inside `nix develop`):
 

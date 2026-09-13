@@ -5,6 +5,8 @@ using System.Drawing.Text;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -33,12 +35,15 @@ namespace WFInfo
     ///   WFInfo.Headless --theme-test  <folder> [uiScale] alias of --theme-debug
     ///   WFInfo.Headless --selfcheck                      end-to-end OCR engine check
     ///   WFInfo.Headless --scan [options]                 reward-screen scan (capture + OCR + prices)
+    ///   WFInfo.Headless --scan --watch [options]         scan on every reward screen (EE.log watch)
     ///
     /// Environment:
     ///   WFINFO_NATIVE_LIBS  directory with libtesseract50.so + libleptonica-1.82.0.so
     ///                       (see nix flake devShell; on Windows the app downloads them)
     ///   WFINFO_DATA_DIR     override for the application-data root (defaults to the
     ///                       OS XDG config dir; tessdata + market DBs land below it)
+    ///   WFINFO_EE_LOG       EE.log path for --watch (else the Steam/Proton prefix
+    ///                       is searched)
     /// </summary>
     internal static class HeadlessProgram
     {
@@ -262,7 +267,11 @@ namespace WFInfo
 
                         var cache = new PriceCache(ScanPaths.PriceCache, http);
                         var runner = new ScanRunner(options, windowService, sheet, cache, settings);
-                        return await runner.RunAsync().ConfigureAwait(false);
+
+                        if (!options.Watch)
+                            return await runner.RunAsync().ConfigureAwait(false);
+
+                        return await WatchAsync(options, runner).ConfigureAwait(false);
                     }
                 }
                 finally
@@ -274,6 +283,62 @@ namespace WFInfo
             {
                 Console.Error.WriteLine($"Scan failed: {ex}");
                 return ExitFatal;
+            }
+        }
+
+        /// <summary>
+        /// Watch mode: tail Warframe's EE.log and run a scan for every reward
+        /// screen the game announces. The OCR engines, market sheet and price
+        /// cache are already built by the caller, so each triggered scan is one
+        /// capture plus the OCR — the reason an answer arrives in well under a
+        /// second. Ctrl-C (or SIGTERM) stops the watch.
+        /// </summary>
+        private static async Task<int> WatchAsync(ScanOptions options, ScanRunner runner)
+        {
+            string logPath = EeLog.Resolve(options.LogPath);
+            if (logPath == null)
+            {
+                Console.Error.WriteLine(
+                    options.LogPath != null
+                        ? $"ERROR: no such log file: {Path.GetFullPath(options.LogPath)}"
+                        : "ERROR: Warframe's EE.log was not found. Start the game once, "
+                          + "or pass --log <path>. Looked in:");
+                if (options.LogPath == null)
+                {
+                    foreach (string candidate in EeLog.CandidatePaths())
+                        Console.Error.WriteLine("  " + candidate);
+                }
+                return ExitFatal;
+            }
+
+            // Ctrl-C and SIGTERM both stop the watch between scans, so a kill
+            // never lands in the middle of writing a scan record. The handlers
+            // are detached before the source is disposed: a ProcessExit-time
+            // signal would otherwise cancel a disposed source and abort.
+            var cancellation = new CancellationTokenSource();
+            ConsoleCancelEventHandler onCancelKeyPress = (_, e) =>
+            {
+                e.Cancel = true;
+                cancellation.Cancel();
+            };
+            Console.CancelKeyPress += onCancelKeyPress;
+            using PosixSignalRegistration term = PosixSignalRegistration.Create(
+                PosixSignal.SIGTERM,
+                context =>
+                {
+                    context.Cancel = true;
+                    cancellation.Cancel();
+                });
+
+            try
+            {
+                var watcher = new ScanWatcher(logPath, options, runner.RunAsync, Console.Out);
+                return await watcher.RunAsync(cancellation.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                Console.CancelKeyPress -= onCancelKeyPress;
+                cancellation.Dispose();
             }
         }
 
@@ -311,6 +376,14 @@ namespace WFInfo
             Console.WriteLine("  --ttl <hours>     price-cache lifetime in hours (default 6)");
             Console.WriteLine("  --no-notify       do not post the desktop notification");
             Console.WriteLine("  --json            print the scan record to stdout");
+            Console.WriteLine();
+            Console.WriteLine("Watch mode (scan automatically when the game shows a reward screen):");
+            Console.WriteLine("  --watch           tail Warframe's EE.log and scan on every reward screen");
+            Console.WriteLine("  --once            scan on the first trigger, then exit");
+            Console.WriteLine("  --log <path>      EE.log to watch (default: the Steam/Proton prefix,"
+                + " or $WFINFO_EE_LOG)");
+            Console.WriteLine("  --wait <seconds>  re-capture until a part is recognised (default 10 in watch)");
+            Console.WriteLine("  --cooldown <s>    ignore further triggers for this long after a scan (default 5)");
         }
 
         /// <summary>
@@ -488,10 +561,12 @@ namespace WFInfo
             Console.WriteLine("  WFInfo.Headless --theme-debug <folder> [uiScale]   Run theme detection over PNGs");
             Console.WriteLine("  WFInfo.Headless --selfcheck                         Verify the OCR engine end-to-end");
             Console.WriteLine("  WFInfo.Headless --scan [options]                    Reward-screen scan (see --scan --help)");
+            Console.WriteLine("  WFInfo.Headless --scan --watch                      Scan automatically on every reward screen");
             Console.WriteLine();
             Console.WriteLine("Environment:");
             Console.WriteLine("  WFINFO_NATIVE_LIBS  dir with libtesseract50.so + libleptonica-1.82.0.so");
             Console.WriteLine("  WFINFO_DATA_DIR     application-data root override (tessdata + market DBs)");
+            Console.WriteLine("  WFINFO_EE_LOG       EE.log path for --scan --watch");
         }
     }
 }
