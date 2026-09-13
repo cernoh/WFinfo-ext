@@ -682,19 +682,19 @@ namespace WFInfo
                 byte[] imgBytes = new byte[imgStride * image.Height];
                 Marshal.Copy(imgData.Scan0, imgBytes, 0, imgBytes.Length);
                 image.UnlockBits(imgData);
-                int imgPixelSize = 4; // BGRA
+                int imgPixelSize = BytesPerPixel(image.PixelFormat);
 
                 for (int y = lineHeight; y < image.Height; y++)
                 {
                     double perc = (y - lineHeight) / (double)(image.Height - lineHeight);
                     int totWidth = (int)(minWidth * perc + minWidth);
                     int startX = (mostWidth - totWidth) / 2;
+                    int rowStart = y * imgStride;
                     for (int x = 0; x < totWidth; x++)
                     {
                         int px = startX + x;
                         if (px >= image.Width) break;
-                        int idx = y * imgStride + px * imgPixelSize;
-                        Color clr = Color.FromArgb(imgBytes[idx + 3], imgBytes[idx + 2], imgBytes[idx + 1], imgBytes[idx]);
+                        Color clr = ReadPixel(imgBytes, rowStart + px * imgPixelSize, imgPixelSize);
                         int match = (int)GetClosestTheme(clr, out int thresh);
                         weights[match] += 1.0 / Math.Pow(thresh + 1, 4);
                     }
@@ -2529,6 +2529,46 @@ namespace WFInfo
             }
         }
 
+        /// <summary>
+        /// Bytes per pixel of a locked bitmap row. The pixel loops below index raw
+        /// buffers by hand, so they must use the real pitch: a screenshot loaded
+        /// from a PNG is commonly 24bpp (3 bytes per pixel) while a GDI capture is
+        /// 32bpp, and assuming 4 overruns the buffer.
+        /// </summary>
+        internal static int BytesPerPixel(PixelFormat format)
+        {
+            switch (format)
+            {
+                case PixelFormat.Format24bppRgb:
+                    return 3;
+                case PixelFormat.Format16bppRgb565:
+                case PixelFormat.Format16bppRgb555:
+                    return 2;
+                case PixelFormat.Format8bppIndexed:
+                    return 1;
+                default:
+                    return 4;
+            }
+        }
+
+        /// <summary>Reads one pixel from a raw buffer in that buffer's own channel order.</summary>
+        private static Color ReadPixel(byte[] buffer, int index, int bytesPerPixel)
+        {
+            return bytesPerPixel == 4
+                ? Color.FromArgb(buffer[index + 3], buffer[index + 2], buffer[index + 1], buffer[index])
+                : Color.FromArgb(buffer[index + 2], buffer[index + 1], buffer[index]);
+        }
+
+        /// <summary>Writes a grayscale value into a raw buffer (0 = black, 255 = white).</summary>
+        private static void WriteGray(byte[] buffer, int index, int bytesPerPixel, byte value)
+        {
+            buffer[index] = value;
+            buffer[index + 1] = value;
+            buffer[index + 2] = value;
+            if (bytesPerPixel == 4)
+                buffer[index + 3] = 255;
+        }
+
         public static Bitmap ScaleUpAndFilter(Bitmap image, WFtheme active, out int[] rowHits, out int[] colHits)
         {
             Bitmap filtered;
@@ -2552,33 +2592,28 @@ namespace WFInfo
 
             rowHits = new int[filtered.Height];
             colHits = new int[filtered.Width];
-            Color clr;
             BitmapData lockedBitmapData = filtered.LockBits(new Rectangle(0, 0, filtered.Width, filtered.Height), ImageLockMode.ReadWrite, filtered.PixelFormat);
-            int numbytes = Math.Abs(lockedBitmapData.Stride) * lockedBitmapData.Height;
+            int filterStride = Math.Abs(lockedBitmapData.Stride);
+            int numbytes = filterStride * filtered.Height;
             byte[] LockedBitmapBytes = new byte[numbytes];
             Marshal.Copy(lockedBitmapData.Scan0, LockedBitmapBytes, 0, numbytes);
-            int PixelSize = 4; //ARGB, order in array is BGRA
-            for (int i = 0; i < numbytes; i+=PixelSize)
+            int PixelSize = BytesPerPixel(filtered.PixelFormat);
+            for (int y = 0; y < filtered.Height; y++)
             {
-                clr = Color.FromArgb(LockedBitmapBytes[i + 3], LockedBitmapBytes[i + 2], LockedBitmapBytes[i + 1], LockedBitmapBytes[i]);
-                if (ThemeThresholdFilter(clr, active)) 
+                int rowStart = y * filterStride;
+                for (int x = 0; x < filtered.Width; x++)
                 {
-                    LockedBitmapBytes[i] = 0;
-                    LockedBitmapBytes[i + 1] = 0;
-                    LockedBitmapBytes[i + 2] = 0;
-                    LockedBitmapBytes[i + 3] = 255;
-                    //Black
-                    int x = (i / PixelSize) % filtered.Width;
-                    int y = (i / PixelSize - x) / filtered.Width;
-                    rowHits[y]++;
-                    colHits[x]++;
-                } else
-                {
-                    LockedBitmapBytes[i] = 255;
-                    LockedBitmapBytes[i + 1] = 255;
-                    LockedBitmapBytes[i + 2] = 255;
-                    LockedBitmapBytes[i + 3] = 255;
-                    //White
+                    int idx = rowStart + x * PixelSize;
+                    if (ThemeThresholdFilter(ReadPixel(LockedBitmapBytes, idx, PixelSize), active))
+                    {
+                        WriteGray(LockedBitmapBytes, idx, PixelSize, 0);   // Black
+                        rowHits[y]++;
+                        colHits[x]++;
+                    }
+                    else
+                    {
+                        WriteGray(LockedBitmapBytes, idx, PixelSize, 255); // White
+                    }
                 }
             }
             Marshal.Copy(LockedBitmapBytes, 0, lockedBitmapData.Scan0, numbytes);
@@ -2664,14 +2699,14 @@ namespace WFInfo
             Marshal.Copy(preFilterData.Scan0, pfBytes, 0, pfBytes.Length);
             preFilter.UnlockBits(preFilterData);
 
-            int pfPixelSize = 4; // BGRA
+            int pfPixelSize = BytesPerPixel(preFilter.PixelFormat);
             for (int y = 0; y < preFilter.Height; y++)
             {
                 rows[y] = 0;
+                int rowStart = y * pfStride;
                 for (int x = 0; x < preFilter.Width; x++)
                 {
-                    int idx = y * pfStride + x * pfPixelSize;
-                    clr = Color.FromArgb(pfBytes[idx + 3], pfBytes[idx + 2], pfBytes[idx + 1], pfBytes[idx]);
+                    clr = ReadPixel(pfBytes, rowStart + x * pfPixelSize, pfPixelSize);
                     if (ThemeThresholdFilter(clr, active))
                         rows[y]++;
                 }
@@ -2830,24 +2865,24 @@ namespace WFInfo
             int dstStride = Math.Abs(dstData.Stride);
             byte[] dstBytes = new byte[dstStride * height];
 
-            int pixelSize = 4; // ARGB, stored as BGRA
+            int srcPixelSize = BytesPerPixel(partBox.PixelFormat);
+            int dstPixelSize = BytesPerPixel(filtered.PixelFormat);
             for (int x = 0; x < width; x++)
             {
                 int count = 0;
                 for (int y = 0; y < height; y++)
                 {
-                    int srcIdx = y * srcStride + x * pixelSize;
-                    clr = Color.FromArgb(srcBytes[srcIdx + 3], srcBytes[srcIdx + 2], srcBytes[srcIdx + 1], srcBytes[srcIdx]);
-                    int dstIdx = y * dstStride + x * pixelSize;
+                    clr = ReadPixel(srcBytes, y * srcStride + x * srcPixelSize, srcPixelSize);
+                    int dstIdx = y * dstStride + x * dstPixelSize;
                     if (ThemeThresholdFilter(clr, active))
                     {
-                        dstBytes[dstIdx] = 0; dstBytes[dstIdx + 1] = 0; dstBytes[dstIdx + 2] = 0; dstBytes[dstIdx + 3] = 255; // Black
+                        WriteGray(dstBytes, dstIdx, dstPixelSize, 0);   // Black
                         counts[y]++;
                         count++;
                     }
                     else
                     {
-                        dstBytes[dstIdx] = 255; dstBytes[dstIdx + 1] = 255; dstBytes[dstIdx + 2] = 255; dstBytes[dstIdx + 3] = 255; // White
+                        WriteGray(dstBytes, dstIdx, dstPixelSize, 255); // White
                     }
                 }
 

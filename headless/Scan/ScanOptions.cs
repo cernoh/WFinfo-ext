@@ -22,6 +22,13 @@ namespace WFInfo.Scan
         public static string MarketItems => Path.Combine(AppDir, "market_items.json");
         public static string MarketData => Path.Combine(AppDir, "market_data.json");
 
+        /// <summary>
+        /// Relic/market name translation table ({relic_name: market_name}). The
+        /// reward pipeline's English name lookup reads it, so a scan without it
+        /// throws in <c>Data.GetPartName</c>.
+        /// </summary>
+        public static string NameData => Path.Combine(AppDir, "name_data.json");
+
         /// <summary>ISO-8601 UTC with milliseconds, the timestamp format of the scan contract.</summary>
         public static string Iso(DateTime utc) =>
             utc.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ", System.Globalization.CultureInfo.InvariantCulture);
