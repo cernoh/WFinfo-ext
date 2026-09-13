@@ -94,7 +94,10 @@ and reports the outcome. It is an "independent digital service" (see
   - `nix run .#dev-all` — this dashboard with live reload, plus the headless
     backend rebuilt and re-run (scan) on every backend edit. Extra arguments
     go to the scan
-- If port 8000 is busy, set `PORT` (e.g. `PORT=8765 deno task start`).
+- If port 8000 is busy, set `PORT` (e.g. `PORT=8765 deno task start`). The
+  server treats a busy port as a start error with the port number in the
+  message; it never switches port on its own. `nix run .#dev-all` picks the
+  first free port from 8000 up when `PORT` is unset.
 - GOV.UK assets download to `~/.cache/wfinfo-dashboard/govuk-6.5.0` on first
   request; set `WFINFO_GOVUK_DIR` to an unpacked dist/govuk for offline use.
 - Data provenance (read-only): `debug.log` (reward screens + app activity),

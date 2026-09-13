@@ -25,6 +25,9 @@ cd dashboard && deno task dev
 
 Then open <http://localhost:8000>. Use a different port with `PORT=8765`.
 
+A busy port stops the start with `error: port 8000 is already in use`; the
+server never picks another port on its own.
+
 To run it without the watch mode:
 
 ```bash
@@ -41,6 +44,11 @@ nix run .#dev-all
 
 The dev stack turns scan notifications off and takes extra arguments for the
 scan, for example `nix run .#dev-all -- --file docs/images/window.png`.
+
+The dev stack prints the dashboard address it chose. It takes the first free
+port from 8000 up, so a service that already holds 8000 (a container, another
+dev server) does not stop it. Set `PORT` to pin the port instead: a busy `PORT`
+is then a start error.
 
 ## Data sources
 

@@ -9,7 +9,8 @@
  *   /wfmarket   — cached prime-part prices, with live 90-day statistics per item
  *
  * Environment:
- *   PORT                 listen port (default 8000)
+ *   PORT                 listen port (default 8000; a busy port is a startup
+ *                        error, never a fallback port)
  *   WFINFO_DATA_DIR      mirrors the headless runner: acts as the config root,
  *                        app dir becomes <dir>/WFInfo (default ~/.config/WFInfo)
  *   WFINFO_GOVUK_DIR     unpacked govuk-frontend dist/govuk (offline override)
@@ -782,9 +783,22 @@ async function handler(
 if (import.meta.main) {
   console.log(`Warframe Info dashboard`);
   console.log(`  data dir:  ${APP_DIR}`);
-  console.log(`  listening: http://localhost:${PORT}`);
   await warmGovuk();
-  Deno.serve({ port: PORT }, handler);
+  try {
+    // A bind failure (the port belongs to another process) is thrown here, so
+    // this is where the operator gets told which port is taken. Deno prints
+    // its own "Listening on …" line after a successful bind.
+    Deno.serve({ port: PORT }, handler);
+  } catch (err) {
+    if (err instanceof Deno.errors.AddrInUse) {
+      console.error(`error: port ${PORT} is already in use`);
+      console.error(
+        `  stop the process that holds it, or listen elsewhere: PORT=8765 deno task dev`,
+      );
+      Deno.exit(1);
+    }
+    throw err;
+  }
 }
 
 export { handler };

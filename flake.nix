@@ -83,8 +83,9 @@
       # operator's session provides.
       dashboardTools = pkgs: with pkgs; [ deno wlr-randr wlrctl ];
 
-      # The dev stack uses the scan tools plus the dashboard runtime.
-      devTools = pkgs: (scanTools pkgs) ++ [ pkgs.deno ];
+      # The dev stack uses the scan tools plus the dashboard runtime (coreutils
+      # carries the `sleep` the teardown uses).
+      devTools = pkgs: (scanTools pkgs) ++ [ pkgs.deno pkgs.coreutils ];
     in
     {
       packages = forAllSystems (pkgs: {
@@ -201,6 +202,9 @@ ${pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "export 
         # Extra arguments go to the scan:
         #   nix run .#dev-all -- --file docs/images/window.png
         #
+        # The frontend takes the first free port from 8000 up unless PORT is
+        # set: a service that already owns 8000 must not stop the whole stack.
+        #
         # Both watchers must watch the working tree, so run it from the checkout
         # (override with WFINFO_DEV_ROOT).
         dev-all = {
@@ -219,12 +223,46 @@ ${pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "export 
 ${pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "export ${name}=${pkgs.lib.escapeShellArg value}") (headlessRuntime pkgs))}
               cd "$root"
 
+              # The frontend port. An explicit PORT is taken as given; without
+              # it the first free port from 8000 is used, so a service that
+              # already owns 8000 (a container, another dev server) does not
+              # stop the stack. Writes the result to PORT.
+              port_in_use() {
+                (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+              }
+              if [ -n "''${PORT:-}" ]; then
+                if port_in_use "$PORT"; then
+                  echo "wfinfo-dev-all: PORT=$PORT is already in use" >&2
+                  exit 1
+                fi
+              else
+                PORT=8000
+                while port_in_use "$PORT"; do
+                  echo "wfinfo-dev-all: port $PORT is in use, trying $((PORT + 1))"
+                  PORT=$((PORT + 1))
+                  if [ "$PORT" -gt 8099 ]; then
+                    echo "wfinfo-dev-all: no free port in 8000-8099; set PORT" >&2
+                    exit 1
+                  fi
+                done
+              fi
+              export PORT
+
               pids=()
+              # Job control puts each watcher in its own process group: `deno
+              # --watch` and `dotnet watch` run the actual program in a child,
+              # and killing only the watcher would leave that child alive and
+              # holding the port. So teardown signals the whole group.
+              set -m
               stop() {
                 trap - INT TERM EXIT
-                if [ "''${#pids[@]}" -gt 0 ]; then
-                  kill "''${pids[@]}" 2>/dev/null || true
-                fi
+                for pid in "''${pids[@]}"; do
+                  kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+                done
+                sleep 0.5
+                for pid in "''${pids[@]}"; do
+                  kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+                done
                 wait 2>/dev/null || true
               }
               trap stop INT TERM EXIT
@@ -233,7 +271,7 @@ ${pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "export 
               dotnet watch --project headless/WFInfo.Headless.csproj run -- --scan --no-notify "$@" &
               pids+=($!)
 
-              echo "wfinfo-dev-all: frontend http://localhost:''${PORT:-8000}   (deno --watch)"
+              echo "wfinfo-dev-all: frontend http://localhost:$PORT   (deno --watch)"
               deno run -A --watch dashboard/src/main.ts &
               pids+=($!)
 

@@ -101,6 +101,10 @@ nix run .#dev-all -- --file docs/images/window.png # extra arguments go to the s
 The dev stack turns notifications off, because one notification per edit is
 noise. Use `nix run .#scan` for the notifying path.
 
+The dev stack prints the dashboard address it chose. It takes the first free
+port from 8000 up, so a service that already holds 8000 does not stop it. Set
+`PORT` to pin the port; a busy `PORT` is then a start error.
+
 The dashboard reads the WFInfo data directory and never writes to it. On Linux
 the data directory is `~/.config/WFInfo`.
 
