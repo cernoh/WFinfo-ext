@@ -31,6 +31,17 @@ To run it without the watch mode:
 nix run .#dashboard
 ```
 
+To develop the dashboard and the headless backend together, run the dev stack.
+It serves the dashboard with live reload and rebuilds and re-runs the
+reward-screen scan after every edit under `headless/`. One Ctrl-C stops both.
+
+```bash
+nix run .#dev-all
+```
+
+The dev stack turns scan notifications off and takes extra arguments for the
+scan, for example `nix run .#dev-all -- --file docs/images/window.png`.
+
 ## Data sources
 
 The dashboard reads WFInfo's local application data and never writes to it:

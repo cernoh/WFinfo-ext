@@ -83,6 +83,21 @@ nix run .#dev                 # live-reload server (working tree)
 cd dashboard && deno task dev # live-reload server inside `nix develop`
 ```
 
+### Frontend and backend together
+
+`nix run .#dev-all` runs the dashboard with live reload and the headless backend
+in one terminal. The backend rebuilds and runs a reward-screen scan again after
+every edit under `headless/`, so the Scan page shows the new result. Press
+Ctrl-C to stop both.
+
+```bash
+nix run .#dev-all                              # dashboard + scan-on-edit backend
+nix run .#dev-all -- --file docs/images/window.png # extra arguments go to the scan
+```
+
+The dev stack turns notifications off, because one notification per edit is
+noise. Use `nix run .#scan` for the notifying path.
+
 The dashboard reads the WFInfo data directory and never writes to it. On Linux
 the data directory is `~/.config/WFInfo`.
 
