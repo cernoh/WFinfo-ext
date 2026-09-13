@@ -5,6 +5,7 @@
  *   /logs       — live tail of debug.log
  *   /recent     — reward screens from debug.log + OCR test-suite results
  *   /scan       — newest OCR reward-screen scan and which part to take
+ *   POST /scan/run — start a scan and answer with the outcome
  *   /wfmarket   — cached prime-part prices, with live 90-day statistics per item
  *
  * Environment:
@@ -13,6 +14,11 @@
  *                        app dir becomes <dir>/WFInfo (default ~/.config/WFInfo)
  *   WFINFO_GOVUK_DIR     unpacked govuk-frontend dist/govuk (offline override)
  *   WFINFO_CACHE_DIR     replace the XDG cache root for govuk assets
+ *   WFINFO_SCAN_CMD      shell command that runs one reward-screen scan
+ *                        (default: the flake's scan app, nix run
+ *                        <checkout>#scan -- --no-notify)
+ *   WFINFO_SCAN_ROOT     checkout the default command builds the runner from
+ *   WFINFO_SCAN_REMOTE   set to 1 to accept scan requests from another host
  *
  * No runtime dependencies beyond the Deno standard library.
  */
@@ -54,6 +60,7 @@ import {
   wfmarketPageHtml,
 } from "./lib/view.ts";
 import { parseScanResult, resolveBest, type ScanResult } from "./lib/scan.ts";
+import { Scanner } from "./lib/scanner.ts";
 
 const PORT = Number(Deno.env.get("PORT") ?? "8000");
 const APP_DIR = resolveAppDir(Deno.env.toObject());
@@ -65,6 +72,47 @@ const MARKET_ITEMS = `${APP_DIR}/market_items.json`;
 const MARKET_DATA = `${APP_DIR}/market_data.json`;
 const TAIL_BYTES = 512 * 1024;
 
+/** A scan run is the headless runner; the page triggers it through this command. */
+const REPO_ROOT = decodeURIComponent(
+  new URL("../../", import.meta.url).pathname,
+).replace(/\/+$/, "");
+
+/** The runner must be built from a writable checkout, never a store copy. */
+const HEADLESS_PROJECT = "headless/WFInfo.Headless.csproj";
+
+function isCheckout(root: string): boolean {
+  if (root.startsWith("/nix/store/")) return false;
+  try {
+    return Deno.statSync(`${root}/${HEADLESS_PROJECT}`).isFile;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The default is the flake's scan app: `nix run <root>#scan` builds the runner
+ * from `WFINFO_SCAN_ROOT` (else its working directory) and captures the screen.
+ * The root is pinned to a checkout that holds the runner, so the dashboard
+ * works from any directory and from the packaged `.#dashboard` app, whose own
+ * copy lives in the read-only store. Without a checkout the app reports its
+ * own "no headless/WFInfo.Headless.csproj" error; set WFINFO_SCAN_CMD to run
+ * the scan another way.
+ */
+const scanRoot = [Deno.cwd(), REPO_ROOT].find(isCheckout);
+const flakeRoot = scanRoot ?? REPO_ROOT;
+const scanCommand = (Deno.env.get("WFINFO_SCAN_CMD") ?? "").trim() ||
+  `${scanRoot ? `WFINFO_SCAN_ROOT='${quote(scanRoot)}' ` : ""}` +
+    `nix run '${quote(flakeRoot)}'#scan -- --no-notify`;
+
+function quote(path: string): string {
+  return path.replaceAll("'", "'\\''");
+}
+
+const scanner = new Scanner({ command: scanCommand });
+const SCAN_REMOTE = ["1", "true", "yes"].includes(
+  (Deno.env.get("WFINFO_SCAN_REMOTE") ?? "").trim().toLowerCase(),
+);
+
 const html = (body: string): Response =>
   new Response(body, {
     headers: {
@@ -73,8 +121,9 @@ const html = (body: string): Response =>
     },
   });
 
-const json = (value: unknown): Response =>
+const json = (value: unknown, status = 200): Response =>
   new Response(JSON.stringify(value), {
+    status,
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
@@ -436,6 +485,81 @@ function apiScan(): Response {
 }
 
 /* ------------------------------------------------------------------ */
+/* Scan runs (POST /scan/run)                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Start one reward-screen scan and report what happened. The dashboard has no
+ * authentication, so a scan is accepted only from the same origin (no
+ * cross-site post) and, unless WFINFO_SCAN_REMOTE is set, only from the
+ * machine the dashboard runs on — that machine is the one a scan captures.
+ */
+async function scanRun(
+  req: Request,
+  info?: Deno.ServeHandlerInfo,
+): Promise<Response> {
+  if (req.method !== "POST") {
+    return new Response("method not allowed", { status: 405 });
+  }
+
+  const origin = req.headers.get("origin");
+  if (origin !== null) {
+    let originHost: string | null = null;
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      originHost = null;
+    }
+    if (originHost === null || originHost !== req.headers.get("host")) {
+      return json(
+        { error: "This request did not come from the dashboard page." },
+        403,
+      );
+    }
+  }
+
+  const remote = info?.remoteAddr;
+  if (
+    !SCAN_REMOTE && remote !== undefined && remote.transport === "tcp" &&
+    !(remote.hostname === "::1" || remote.hostname.startsWith("127.") ||
+      remote.hostname.startsWith("::ffff:127."))
+  ) {
+    return json({
+      error:
+        `A scan captures the screen of the machine that hosts the dashboard, and ${remote.hostname} is another host. Set WFINFO_SCAN_REMOTE=1 to accept scan requests from other hosts.`,
+    }, 403);
+  }
+
+  if (scanner.busy) {
+    return json({ error: "A scan is already running." }, 409);
+  }
+
+  const outcome = await scanner.run();
+  const seconds = (outcome.durationMs / 1000).toFixed(1);
+  const message = outcome.status === "ok"
+    ? `Scan complete in ${seconds} s.`
+    : outcome.status === "timeout"
+    ? `The scan did not finish within ${
+      Math.round(scanner.timeoutMs / 1000)
+    } s and was stopped.`
+    : outcome.status === "failed"
+    ? `The scan command failed (exit code ${outcome.exitCode}).`
+    : "The scan command could not be started.";
+
+  // The page script asks for JSON and refreshes the body itself; a plain form
+  // post (no script) gets a redirect back to the page, or the failure page.
+  if (!(req.headers.get("accept") ?? "").includes("application/json")) {
+    return outcome.status === "ok"
+      ? redirect("/scan")
+      : html(errorPageHtml(`${message} ${outcome.output}`));
+  }
+  return json(
+    { ...outcome, ok: outcome.status === "ok", message },
+    outcome.status === "ok" ? 200 : 502,
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Static files                                                        */
 /* ------------------------------------------------------------------ */
 
@@ -474,14 +598,20 @@ function serveStatic(pathname: string): Response | null {
 /* Routing                                                             */
 /* ------------------------------------------------------------------ */
 
-async function handler(req: Request): Promise<Response> {
-  if (req.method !== "GET") {
-    return new Response("method not allowed", { status: 405 });
-  }
+async function handler(
+  req: Request,
+  info?: Deno.ServeHandlerInfo,
+): Promise<Response> {
   const url = new URL(req.url);
   const path = url.pathname;
 
   try {
+    if (path === "/scan/run") return await scanRun(req, info);
+
+    if (req.method !== "GET") {
+      return new Response("method not allowed", { status: 405 });
+    }
+
     if (path === "/") return redirect("/logs");
 
     if (path === "/logs") return html(logsPageHtml(logsState()));

@@ -423,11 +423,11 @@ export function scanBodyHtml(state: ScanPageState): string {
   if (scan === null) {
     return `<div class="govuk-inset-text">
   <p class="govuk-body wf-!-no-margin-bottom">
-    No scan recorded yet. Press the scan hotkey (or run
-    <code class="wf-code">nix run .#scan</code>) on a fissure reward screen and
-    this page fills with the newest result: the part worth taking, every
-    choice with its platinum price, and the captured screenshot. Scan records
-    are read from
+    No scan recorded yet. Press <strong>Scan now</strong> above (or the scan
+    hotkey, or <code class="wf-code">nix run .#scan</code>) on a fissure reward
+    screen and this page fills with the newest result: the part worth taking,
+    every choice with its platinum price, and the captured screenshot. Scan
+    records are read from
     <code class="wf-code">${escapeHtml(state.appDir)}/scans/latest.json</code>.
   </p>
 </div>`;
@@ -544,6 +544,15 @@ export function scanPageHtml(state: ScanPageState): string {
 (<code class="wf-code">WFInfo.Headless --scan</code>): which prime part to take
 for the best platinum return, every choice it recognised, and the capture it
 priced.</p>
+<form id="wf-scan-form" class="wf-scan-form" method="post" action="/scan/run">
+  <button id="wf-scan-button" class="govuk-button" data-module="govuk-button" type="submit">Scan now</button>
+  <p class="govuk-body-s wf-muted wf-!-no-margin-bottom">Runs a scan on the
+  machine that hosts this dashboard: it captures the screen, prices every part
+  it recognises and writes the record shown below. Keep the Warframe reward
+  screen visible on the captured monitor. A scan takes a few seconds.</p>
+</form>
+<p id="wf-scan-status" class="govuk-body wf-muted" role="status" aria-live="polite" hidden></p>
+<pre id="wf-scan-log" class="wf-scan-log" hidden></pre>
 <div id="wf-scan-body">
 ${scanBodyHtml(state)}
 </div>

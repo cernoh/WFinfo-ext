@@ -5,16 +5,21 @@
 `dashboard/` is the Warframe Info web dashboard: a Deno server styled with
 GOV.UK Frontend that opens in a browser and presents WFInfo's local application
 data — OCR logs, OCR test-suite results, cached market prices, and the newest
-OCR reward-screen scan. It is an "independent digital service" (see
+OCR reward-screen scan. It also starts a scan on demand: the "Scan now" button
+on the Scan page posts to `/scan/run`, which runs the configured scan command
+and reports the outcome. It is an "independent digital service" (see
 `src/static/warframe-info-logo.webp`): no crown crest, no affiliation claims.
 
 ## Ownership
 
 - `deno.json` — tasks (`start`, `dev`, `check`, `test`, `fmt`, `lint`) and
   fmt/lint exclusions (AGENTS.md, README.md, `src/static`).
-- `src/main.ts` — HTTP server: routing (including `/scan`, `/api/scan` and
-  `/scan/screenshot`), env config (`PORT`, `WFINFO_DATA_DIR`,
-  `WFINFO_GOVUK_DIR`, `WFINFO_CACHE_DIR`), file reading, API endpoints.
+- `src/main.ts` — HTTP server: routing (including `/scan`, `POST /scan/run`,
+  `/api/scan` and `/scan/screenshot`), env config (`PORT`, `WFINFO_DATA_DIR`,
+  `WFINFO_GOVUK_DIR`, `WFINFO_CACHE_DIR`, `WFINFO_SCAN_CMD`,
+  `WFINFO_SCAN_ROOT`, `WFINFO_SCAN_REMOTE`), file reading, API endpoints.
+- `src/lib/scanner.ts` — one scan run at a time: spawn the configured command,
+  kill it at the deadline, report status/exit code/output.
 - `src/lib/fsdata.ts` — app-data dir resolution (mirrors headless
   `ConfigureEnvironment`), `debug.log` tail/parse helpers, OCR suite-result
   parsing.
@@ -31,8 +36,9 @@ OCR reward-screen scan. It is an "independent digital service" (see
 - `src/lib/govuk.ts` — mirrors govuk-frontend npm assets into a local cache
   (no npm imports at runtime).
 - `src/lib/view.ts` — GOV.UK page templates and bespoke `wf-` styles wiring.
-- `src/static/` — `app.css` (bespoke `wf-` classes), `dashboard.js` (polling
-  + filter, progressive enhancement), `warframe-info-logo.webp` (brand asset).
+- `src/static/` — `app.css` (bespoke `wf-` classes), `dashboard.js` (polling,
+  filter and the scan-button submit, progressive enhancement),
+  `warframe-info-logo.webp` (brand asset).
 - `src/lib/*_test.ts` + `src/lib/testutil.ts` — offline unit tests.
 
 ## Local Contracts
@@ -50,6 +56,21 @@ OCR reward-screen scan. It is an "independent digital service" (see
   from `deno lint` (browser globals), not from formatting.
 - The logo asset is the user's brand mark; do not replace it with the GOV.UK
   crown crest.
+- A scan run is the headless runner, never a dashboard re-implementation:
+  `/scan/run` spawns `WFINFO_SCAN_CMD` (default: the flake's scan app at the
+  checkout that holds `headless/`, `--no-notify`). The runner owns every file a
+  scan writes (`scans/`, `price_cache.json`); the dashboard itself still writes
+  nothing to the data dir.
+- One scan at a time: a second request while a run is in flight is answered
+  `409`, never queued — two runs would capture the screen twice and race on the
+  scan record. A run past its deadline (180 s) is killed and reported as
+  `timeout`.
+- The route is a POST and is loopback-only: a cross-site post is refused, and a
+  request from another host needs `WFINFO_SCAN_REMOTE=1`. The dashboard has no
+  authentication; a scan captures the screen of the host that runs it.
+- Progressive enhancement: `dashboard.js` posts with `Accept: application/json`
+  and renders the status and the command output. Without the script the form
+  still works (302 back to `/scan`, or the error page).
 
 ## Work Guidance
 
@@ -74,6 +95,9 @@ OCR reward-screen scan. It is an "independent digital service" (see
   sandbox.
 - Live smoke: run the server, then fetch `/logs`, `/recent`, `/scan`,
   `/wfmarket`, and a `/wfmarket/<slug>` detail page in a browser.
+- Scan-button smoke: open `/scan`, press "Scan now", and check the status line
+  and the refreshed record — `src/lib/scan_run_test.ts` covers the route with a
+  stand-in command; a real press needs the flake's scan tools on the machine.
 
 ## Child DOX Index
 
