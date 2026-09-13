@@ -6,8 +6,9 @@
  *   10s and re-render the two card lists.
  * - Scan page: re-fetch /api/scan every 3s and swap in the re-rendered body,
  *   so a hotkey-triggered scan appears without a reload. The page's "Scan now"
- *   form posts to /scan/run, which starts a real scan; the script keeps the
- *   button busy until the scan answers and then refreshes the body.
+ *   form posts to /scan/run with the chosen display or window; the script
+ *   keeps the button busy until the scan answers and then refreshes the body.
+ *   "Refresh lists" re-reads the host's displays and windows.
  *
  * Polling pauses while the tab is hidden. All dynamic text is escaped.
  */
@@ -324,6 +325,71 @@
     log.textContent = text;
   }
 
+  function setScanTargetsStatus(text, isError) {
+    var status = $("wf-scan-targets-status");
+    if (!status) return;
+    status.className = isError ? "wf-err" : "wf-muted";
+    status.textContent = text;
+  }
+
+  function fillSelect(select, options, fallback) {
+    var previous = select.value;
+    var html = '<option value="">' + esc(fallback) + "</option>";
+    for (var i = 0; i < options.length; i++) {
+      html += '<option value="' + esc(options[i].value) + '">' +
+        esc(options[i].label) + "</option>";
+    }
+    select.innerHTML = html;
+    // Keep the operator's choice when it is still on the list.
+    for (var j = 0; j < select.options.length; j++) {
+      if (select.options[j].value === previous) {
+        select.value = previous;
+        return;
+      }
+    }
+  }
+
+  function refreshScanTargets() {
+    var button = $("wf-scan-refresh");
+    if (button) button.disabled = true;
+    setScanTargetsStatus(
+      "Reading the displays and windows of this host…",
+      false,
+    );
+    fetchJson("/api/scan/targets?refresh=1").then(function (data) {
+      fillSelect(
+        $("wf-scan-display"),
+        data.displays || [],
+        "Every output (automatic)",
+      );
+      fillSelect(
+        $("wf-scan-window"),
+        data.windows || [],
+        "No window — capture the whole display",
+      );
+      var counts = (data.displays || []).length + " display(s), " +
+        (data.windows || []).length + " window(s)";
+      var notes = data.notes || [];
+      setScanTargetsStatus(
+        counts + (notes.length > 0 ? " — " + notes.join(" ") : ""),
+        (data.displays || []).length + (data.windows || []).length === 0,
+      );
+    }).catch(function (err) {
+      setScanTargetsStatus(
+        "Could not read the target list: " + err.message,
+        true,
+      );
+    }).finally(function () {
+      if (button) button.disabled = false;
+    });
+  }
+
+  function initScanTargets() {
+    var refresh = $("wf-scan-refresh");
+    if (!refresh) return;
+    refresh.addEventListener("click", refreshScanTargets);
+  }
+
   function submitScan(event) {
     // Without this handler the plain form post still works: it redirects
     // back to /scan once the scan record is written.
@@ -337,6 +403,7 @@
     fetch(form.action, {
       method: "POST",
       headers: { Accept: "application/json" },
+      body: new FormData(form),
     }).then(function (resp) {
       return resp.json().catch(function () {
         return {};
@@ -376,6 +443,7 @@
     initRecent();
     initScan();
     initScanForm();
+    initScanTargets();
   }
 
   if (document.readyState === "loading") {

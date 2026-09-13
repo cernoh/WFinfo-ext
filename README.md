@@ -46,12 +46,15 @@ strip, prices each part, and reports the best platinum choice.
 nix run .#scan                     # capture the screen, notify, write a record
 nix run .#scan -- --refresh        # ignore the price-cache lifetime
 nix run .#scan -- --file shot.png  # price an existing screenshot
+nix run .#scan -- --output DP-2    # capture one monitor
+nix run .#scan -- --region "10,44 1900x1026"  # capture one window's frame
 nix run .#scan -- --json           # print the scan record to stdout
 ```
 
 Each run does this:
 
-1. Captures the screen with `grim` for each Wayland output.
+1. Captures the screen with `grim` for each Wayland output, unless `--file`,
+   `--region`, or `--output` pins one image.
 
 2. OCRs the reward strip and corrects each name against `market_items.json`.
 
@@ -100,6 +103,13 @@ noise. Use `nix run .#scan` for the notifying path.
 
 The dashboard reads the WFInfo data directory and never writes to it. On Linux
 the data directory is `~/.config/WFInfo`.
+
+### Choose the captured display or window
+
+The Scan page lists the displays and the windows of the machine that runs the
+dashboard. Choose the display that shows Warframe, or choose one window to
+capture its frame instead of the whole monitor. Press "Refresh lists" after
+Warframe starts, then press "Scan now".
 
 ## Checks
 

@@ -12,6 +12,7 @@ import { assertEquals, assertStringIncludes } from "./testutil.ts";
  */
 Deno.test("POST /scan/run runs the scan command and reports the outcome", async () => {
   const root = await Deno.makeTempDir({ prefix: "wfinfo_scan_run_" });
+  const savedPath = Deno.env.get("PATH") ?? "";
   try {
     const appDir = `${root}/WFInfo`;
     await Deno.mkdir(`${appDir}/scans`, { recursive: true });
@@ -39,16 +40,70 @@ Deno.test("POST /scan/run runs the scan command and reports the outcome", async 
       }),
     );
 
+    // The dashboard asks the *host* what it can capture: stub `wlr-randr` and
+    // `mmsg` stand in for the compositor tools. They must exist before
+    // main.ts is imported, because the page render caches the target list.
+    const tools = `${root}/tools`;
+    await Deno.mkdir(tools, { recursive: true });
+    const stub = async (name: string, script: string) => {
+      await Deno.writeTextFile(`${tools}/${name}`, `#!/bin/sh\n${script}\n`);
+      await Deno.chmod(`${tools}/${name}`, 0o755);
+    };
+    await stub(
+      "wlr-randr",
+      `echo '[{"name":"DP-2","enabled":true,"position":{"x":1920,"y":0},` +
+        `"modes":[{"width":1920,"height":1080,"current":true}]},` +
+        `{"name":"DP-1","enabled":true,"position":{"x":0,"y":0},` +
+        `"modes":[{"width":1920,"height":1080,"current":true}]}]'`,
+    );
+    await stub(
+      "mmsg",
+      `echo '{"clients":[{"id":7,"appid":"steam_app_230410","title":"Warframe",` +
+        `"monitor":"DP-2","x":1930,"y":44,"width":1900,"height":1026,` +
+        `"is_focused":true,"is_visible":true}]}'`,
+    );
+    Deno.env.set("PATH", `${tools}:${savedPath}`);
+
     // The marker files steer the stand-in command, so one worker can exercise
-    // success, failure and a run that is still in flight.
-    const command = [
-      `if [ -f '${root}/slow' ]; then sleep 0.6; fi`,
-      `if [ -f '${root}/fail' ]; then echo 'boom: no display' >&2; exit 4; fi`,
-      `cp '${root}/record.json' '${appDir}/scans/latest.json'`,
-      `echo 'captured DP-2'`,
-    ].join("; ");
+    // success, failure and a run that is still in flight. It is a real script
+    // that logs its own arguments: that record is how the chosen capture target
+    // is proven to reach the scan command.
+    const stubScript = `${root}/scan-stub.sh`;
+    await Deno.writeTextFile(
+      stubScript,
+      [
+        "#!/bin/sh",
+        `printf '%s\\n' "$@" >> '${root}/args.txt'`,
+        `if [ -f '${root}/slow' ]; then sleep 0.6; fi`,
+        `if [ -f '${root}/fail' ]; then echo 'boom: no display' >&2; exit 4; fi`,
+        `cp '${root}/record.json' '${appDir}/scans/latest.json'`,
+        `echo 'captured DP-2'`,
+        "",
+      ].join("\n"),
+    );
+    await Deno.chmod(stubScript, 0o755);
+
+    /** The extra arguments the last scan was started with, as its argv. */
+    const scanArgs = async (): Promise<string[]> => {
+      try {
+        return (await Deno.readTextFile(`${root}/args.txt`)).split("\n")
+          .filter((line) => line !== "");
+      } catch {
+        return [];
+      }
+    };
+
+    /** Forget the recorded arguments, so the next scan's are unambiguous. */
+    const clearScanArgs = async (): Promise<void> => {
+      try {
+        await Deno.remove(`${root}/args.txt`);
+      } catch {
+        // Nothing recorded yet.
+      }
+    };
+
     Deno.env.set("WFINFO_DATA_DIR", root);
-    Deno.env.set("WFINFO_SCAN_CMD", command);
+    Deno.env.set("WFINFO_SCAN_CMD", `'${stubScript}'`);
     const { handler } = await import("../main.ts");
 
     // The /scan page carries the button, wired to the route.
@@ -159,7 +214,93 @@ Deno.test("POST /scan/run runs the scan command and reports the outcome", async 
     // The route is a POST; a GET only ever reads.
     const get = await handler(new Request("http://localhost/scan/run"));
     assertEquals(get.status, 405);
+
+    // --- Choosing a display or a window ---------------------------------
+    {
+      const page = await handler(new Request("http://localhost/scan"));
+      const pageHtml = await page.text();
+      assertStringIncludes(pageHtml, 'name="display"');
+      assertStringIncludes(pageHtml, 'name="window"');
+      assertStringIncludes(pageHtml, 'value="display:DP-2"');
+      assertStringIncludes(pageHtml, 'value="window:7"');
+      assertStringIncludes(pageHtml, "steam_app_230410");
+
+      const targetsResp = await handler(
+        new Request("http://localhost/api/scan/targets?refresh=1"),
+      );
+      assertEquals(targetsResp.status, 200);
+      const targets = await targetsResp.json();
+      assertEquals(targets.displays.length, 2);
+      assertEquals(targets.windows.length, 1);
+      assertEquals(targets.windows[0].label.includes("Warframe"), true);
+
+      // A chosen window is resolved to its current frame and passed on.
+      const byWindow = await handler(
+        new Request("http://localhost/scan/run", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost",
+            host: "localhost",
+            accept: "application/json",
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          body: "display=&window=window%3A7",
+        }),
+        loopback,
+      );
+      assertEquals(byWindow.status, 200);
+      const windowJson = await byWindow.json();
+      assertStringIncludes(windowJson.message, "Capture: steam_app_230410");
+      assertStringIncludes(windowJson.message, "Warframe");
+      assertEquals(
+        await scanArgs(),
+        ["--region", "1930,44 1900x1026"],
+        "the window's current frame is the capture region",
+      );
+
+      // A chosen display becomes the grim output.
+      await clearScanArgs();
+      const byDisplay = await handler(
+        new Request("http://localhost/scan/run", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost",
+            host: "localhost",
+            accept: "application/json",
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          body: "display=display%3ADP-1&window=",
+        }),
+        loopback,
+      );
+      assertEquals(byDisplay.status, 200);
+      assertEquals(await scanArgs(), ["--output", "DP-1"]);
+
+      // A window that has closed is refused before the scan starts.
+      await clearScanArgs();
+      const gone = await handler(
+        new Request("http://localhost/scan/run", {
+          method: "POST",
+          headers: {
+            origin: "http://localhost",
+            host: "localhost",
+            accept: "application/json",
+            "content-type": "application/x-www-form-urlencoded",
+          },
+          body: "window=window%3A42",
+        }),
+        loopback,
+      );
+      assertEquals(gone.status, 400);
+      assertStringIncludes((await gone.json()).error, "not open any more");
+      assertEquals(
+        await scanArgs(),
+        [],
+        "no scan runs for a stale choice",
+      );
+    }
   } finally {
+    Deno.env.set("PATH", savedPath);
     Deno.env.delete("WFINFO_SCAN_CMD");
     await Deno.remove(root, { recursive: true });
   }

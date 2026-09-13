@@ -302,6 +302,8 @@ namespace WFInfo
             Console.WriteLine();
             Console.WriteLine("  --file <png>      OCR this screenshot instead of capturing the screen");
             Console.WriteLine("  --output <name>   grim output (monitor) to capture; default tries every output");
+            Console.WriteLine("  --region \"X,Y WxH\" capture one layout region (a window's frame), e.g. \"10,44 1900x1026\"");
+            Console.WriteLine("                    --file wins over --region, --region over --output");
             Console.WriteLine("  --theme <name>    force a UI theme instead of the automatic probe");
             Console.WriteLine("                    (auto | " + ScanOptions.ThemeNames() + ")");
             Console.WriteLine("  --refresh         ignore the local price-cache TTL for this run");

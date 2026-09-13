@@ -61,6 +61,13 @@ import {
 } from "./lib/view.ts";
 import { parseScanResult, resolveBest, type ScanResult } from "./lib/scan.ts";
 import { Scanner } from "./lib/scanner.ts";
+import {
+  denoRunner,
+  discoverTargets,
+  resolveCapture,
+  type ScanTargets,
+  toOptions,
+} from "./lib/targets.ts";
 
 const PORT = Number(Deno.env.get("PORT") ?? "8000");
 const APP_DIR = resolveAppDir(Deno.env.toObject());
@@ -112,6 +119,32 @@ const scanner = new Scanner({ command: scanCommand });
 const SCAN_REMOTE = ["1", "true", "yes"].includes(
   (Deno.env.get("WFINFO_SCAN_REMOTE") ?? "").trim().toLowerCase(),
 );
+
+/**
+ * Capture targets of this host. Discovery shells out to `wlr-randr` and the
+ * compositor, so a short memo keeps a page load and its follow-up request from
+ * asking twice; the Refresh button forces a fresh list.
+ */
+const TARGETS_TTL_MS = 3000;
+let targetCache: { at: number; targets: ScanTargets } | null = null;
+
+/**
+ * True from the moment a scan request claims the slot until its run ends.
+ * `Scanner.busy` alone is not enough: a request reads the form and the target
+ * list before it starts the process, and a second request must not slip in
+ * during that window.
+ */
+let scanStarting = false;
+
+async function captureTargets(force = false): Promise<ScanTargets> {
+  const now = Date.now();
+  if (!force && targetCache !== null && now - targetCache.at < TARGETS_TTL_MS) {
+    return targetCache.targets;
+  }
+  const targets = await discoverTargets(denoRunner());
+  targetCache = { at: now, targets };
+  return targets;
+}
 
 const html = (body: string): Response =>
   new Response(body, {
@@ -484,6 +517,12 @@ function apiScan(): Response {
   });
 }
 
+/** The scan page's display/window lists; `?refresh=1` skips the short memo. */
+async function apiScanTargets(url: URL): Promise<Response> {
+  const targets = await captureTargets(url.searchParams.get("refresh") === "1");
+  return json(toOptions(targets));
+}
+
 /* ------------------------------------------------------------------ */
 /* Scan runs (POST /scan/run)                                          */
 /* ------------------------------------------------------------------ */
@@ -530,33 +569,93 @@ async function scanRun(
     }, 403);
   }
 
-  if (scanner.busy) {
+  // Claim the slot before the first await: reading the form and the target
+  // list takes time, and two requests that overlap there must not both start a
+  // scan. The reservation is released when the run (or the failure) is done.
+  if (scanner.busy || scanStarting) {
     return json({ error: "A scan is already running." }, 409);
   }
+  scanStarting = true;
 
-  const outcome = await scanner.run();
-  const seconds = (outcome.durationMs / 1000).toFixed(1);
-  const message = outcome.status === "ok"
-    ? `Scan complete in ${seconds} s.`
-    : outcome.status === "timeout"
-    ? `The scan did not finish within ${
-      Math.round(scanner.timeoutMs / 1000)
-    } s and was stopped.`
-    : outcome.status === "failed"
-    ? `The scan command failed (exit code ${outcome.exitCode}).`
-    : "The scan command could not be started.";
+  try {
+    // The form carries the chosen display and window. A window is resolved to
+    // its current frame here, not in the browser: the choice is an id, the
+    // geometry is whatever the compositor reports now.
+    const form = await scanFormValues(req);
+    const choice = resolveCapture(
+      await captureTargets(form.refresh),
+      form.display,
+      form.window,
+    );
+    if (!choice.ok) {
+      const message = `${choice.error} Scan not started.`;
+      if (!wantsJson(req)) return html(errorPageHtml(message));
+      return json({ error: message }, 400);
+    }
 
-  // The page script asks for JSON and refreshes the body itself; a plain form
-  // post (no script) gets a redirect back to the page, or the failure page.
-  if (!(req.headers.get("accept") ?? "").includes("application/json")) {
-    return outcome.status === "ok"
-      ? redirect("/scan")
-      : html(errorPageHtml(`${message} ${outcome.output}`));
+    const outcome = await scanner.run(choice.capture.args);
+    const seconds = (outcome.durationMs / 1000).toFixed(1);
+    const message = outcome.status === "ok"
+      ? `Scan complete in ${seconds} s. Capture: ${choice.capture.label}.`
+      : outcome.status === "timeout"
+      ? `The scan did not finish within ${
+        Math.round(scanner.timeoutMs / 1000)
+      } s and was stopped.`
+      : outcome.status === "failed"
+      ? `The scan command failed (exit code ${outcome.exitCode}).`
+      : "The scan command could not be started.";
+
+    // The page script asks for JSON and refreshes the body itself; a plain
+    // form post (no script) gets a redirect back to the page, or the failure
+    // page.
+    if (!wantsJson(req)) {
+      return outcome.status === "ok"
+        ? redirect("/scan")
+        : html(errorPageHtml(`${message} ${outcome.output}`));
+    }
+    return json(
+      { ...outcome, ok: outcome.status === "ok", message },
+      outcome.status === "ok" ? 200 : 502,
+    );
+  } finally {
+    scanStarting = false;
   }
-  return json(
-    { ...outcome, ok: outcome.status === "ok", message },
-    outcome.status === "ok" ? 200 : 502,
-  );
+}
+
+const wantsJson = (req: Request): boolean =>
+  (req.headers.get("accept") ?? "").includes("application/json");
+
+/**
+ * Read the scan form's `display` and `window` fields. A POST without a form
+ * body (a scripted click, or a plain form with no choice) means "no preference":
+ * the runner then tries every output. `refresh` skips the target memo, so a
+ * window that just opened is found.
+ */
+async function scanFormValues(
+  req: Request,
+): Promise<{ display: string; window: string; refresh: boolean }> {
+  const type = (req.headers.get("content-type") ?? "").toLowerCase();
+  if (
+    !type.includes("application/x-www-form-urlencoded") &&
+    !type.includes("multipart/form-data")
+  ) {
+    return { display: "", window: "", refresh: false };
+  }
+
+  try {
+    const data = await req.formData();
+    const value = (key: string): string => {
+      const raw = data.get(key);
+      return typeof raw === "string" ? raw.trim() : "";
+    };
+    return {
+      display: value("display"),
+      window: value("window"),
+      refresh: value("refresh") !== "",
+    };
+  } catch {
+    return { display: "", window: "", refresh: false };
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -618,7 +717,9 @@ async function handler(
 
     if (path === "/recent") return html(recentPageHtml(recentState()));
 
-    if (path === "/scan") return html(scanPageHtml(scanState()));
+    if (path === "/scan") {
+      return html(scanPageHtml(scanState(), toOptions(await captureTargets())));
+    }
 
     if (path === "/scan/screenshot") {
       // Only the fixed screenshot path is ever served: the route is an exact
@@ -650,6 +751,7 @@ async function handler(
     if (path === "/api/reward-events") return apiRewardEvents();
     if (path === "/api/ocr-runs") return apiOcrRuns();
     if (path === "/api/scan") return apiScan();
+    if (path === "/api/scan/targets") return await apiScanTargets(url);
 
     if (path.startsWith("/govuk/")) {
       const asset = await govukAsset(path);

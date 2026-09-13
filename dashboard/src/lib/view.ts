@@ -10,6 +10,7 @@ import type { CatalogItem } from "./items.ts";
 import { wfmItemUrl } from "./items.ts";
 import type { LiveStats } from "./wfm.ts";
 import { priceChartSvg } from "./charts.ts";
+import type { ScanTargetOptions, TargetOption } from "./targets.ts";
 
 export type NavKey = "logs" | "recent" | "scan" | "wfmarket";
 
@@ -537,7 +538,29 @@ ${table}
 ${noChoices}`;
 }
 
-export function scanPageHtml(state: ScanPageState): string {
+export function scanPageHtml(
+  state: ScanPageState,
+  targets: ScanTargetOptions,
+): string {
+  const targetOptions = (options: TargetOption[], fallback: string): string =>
+    [`<option value="">${escapeHtml(fallback)}</option>`]
+      .concat(
+        options.map((o) =>
+          `<option value="${escapeHtml(o.value)}">${
+            escapeHtml(o.label)
+          }</option>`
+        ),
+      )
+      .join("\n");
+
+  const notes = targets.notes.length === 0
+    ? ""
+    : `<div class="govuk-inset-text">
+  <ul class="govuk-list govuk-list--bullet govuk-body-s wf-!-no-margin-bottom">
+${targets.notes.map((n) => `    <li>${escapeHtml(n)}</li>`).join("\n")}
+  </ul>
+</div>`;
+
   const content = `
 <h1 class="govuk-heading-xl">OCR scan</h1>
 <p class="govuk-body">The newest reward-screen scan made by the headless scanner
@@ -545,11 +568,33 @@ export function scanPageHtml(state: ScanPageState): string {
 for the best platinum return, every choice it recognised, and the capture it
 priced.</p>
 <form id="wf-scan-form" class="wf-scan-form" method="post" action="/scan/run">
+  <div class="govuk-form-group">
+    <label class="govuk-label" for="wf-scan-display">Display</label>
+    <div id="wf-scan-display-hint" class="govuk-hint">The monitor the scan captures. Choose the display that shows Warframe.</div>
+    <select class="govuk-select" id="wf-scan-display" name="display" aria-describedby="wf-scan-display-hint">
+${targetOptions(targets.displays, "Every output (automatic)")}
+    </select>
+  </div>
+  <div class="govuk-form-group">
+    <label class="govuk-label" for="wf-scan-window">Window</label>
+    <div id="wf-scan-window-hint" class="govuk-hint">Capture one window's frame instead of a whole display. A chosen window wins over the display above. Window sizes are the frame the compositor reports.</div>
+    <select class="govuk-select" id="wf-scan-window" name="window" aria-describedby="wf-scan-window-hint">
+${targetOptions(targets.windows, "No window — capture the whole display")}
+    </select>
+  </div>
+  <p class="govuk-body-s wf-muted wf-!-no-margin-bottom">
+    <button id="wf-scan-refresh" type="button" class="govuk-button govuk-button--secondary govuk-!-margin-bottom-1" data-module="govuk-button">Refresh lists</button>
+    <span id="wf-scan-targets-status">Displays and windows come from this host
+    (<code class="wf-code">wlr-randr</code> and the compositor's client list).
+    Open Warframe, then refresh.</span>
+  </p>
+${notes}
   <button id="wf-scan-button" class="govuk-button" data-module="govuk-button" type="submit">Scan now</button>
   <p class="govuk-body-s wf-muted wf-!-no-margin-bottom">Runs a scan on the
-  machine that hosts this dashboard: it captures the screen, prices every part
-  it recognises and writes the record shown below. Keep the Warframe reward
-  screen visible on the captured monitor. A scan takes a few seconds.</p>
+  machine that hosts this dashboard: it captures the chosen display or window,
+  prices every part it recognises and writes the record shown below. Keep the
+  Warframe reward screen visible on the captured monitor. A scan takes a few
+  seconds.</p>
 </form>
 <p id="wf-scan-status" class="govuk-body wf-muted" role="status" aria-live="polite" hidden></p>
 <pre id="wf-scan-log" class="wf-scan-log" hidden></pre>

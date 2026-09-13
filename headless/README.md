@@ -44,12 +44,15 @@ notification, and writes a scan record the dashboard's "Scan" page displays.
 
 The same scan runs from the dashboard: press **Scan now** on its Scan page
 (the server runs the command below with `WFINFO_SCAN_ROOT` set to this
-checkout, and `--no-notify` because the page reports the result).
+checkout, and `--no-notify` because the page reports the result). The page can
+also pin one display or one window; it then passes `--output` or `--region`.
 
 ```bash
 nix run .#scan                     # capture every output, notify, record
 nix run .#scan -- --refresh        # ignore the price-cache TTL
 nix run .#scan -- --file shot.png  # price an existing screenshot (no capture)
+nix run .#scan -- --output DP-2    # capture one monitor
+nix run .#scan -- --region "10,44 1900x1026"   # capture one window's frame
 nix run .#scan -- --json           # print the record to stdout
 ```
 
@@ -57,6 +60,7 @@ nix run .#scan -- --json           # print the record to stdout
 |---|---|
 | `--file <png>` | OCR this screenshot instead of capturing the screen |
 | `--output <name>` | grim output (monitor) to capture; default tries each output, then the joined image |
+| `--region "X,Y WxH"` | capture one layout region — a window's frame, in the same coordinates the compositor reports for its clients |
 | `--theme <name>` | force a UI theme instead of the automatic probe (`auto` restores the probe) |
 | `--refresh` | ignore the local price-cache TTL for this run |
 | `--ttl <hours>` | price-cache lifetime (default 6) |
@@ -72,7 +76,9 @@ None,Print,spawn_shell,nix run /path/to/WFinfo-ext#scan
 Each run does this:
 
 1. Capture: `grim -o <output>` for every output (via `wlr-randr`), stopping at
-   the first screen that parses, else the joined image.
+   the first screen that parses, else the joined image. `--output` pins one
+   output and `--region "X,Y WxH"` pins one layout region (a window's frame);
+   either makes the scan a single capture, and `--file` pins an image on disk.
 2. OCR: the shared `ProcessRewardScreenForTest` pipeline plus WFInfo's
    Levenshtein name correction against `market_items.json`. A failed attempt
    retries once per UI theme, because the theme probe samples a single pixel

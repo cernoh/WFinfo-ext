@@ -80,8 +80,12 @@ namespace WFInfo.Scan
             if (current != null && enabled) outputs.Add(current);
         }
 
-        /// <summary>Captures <paramref name="output"/> (null/empty = all outputs) into a PNG file.</summary>
-        public static bool Capture(string output, string destination, out string error)
+        /// <summary>
+        /// Captures a PNG file: <paramref name="region"/> ("X,Y WxH", layout
+        /// coordinates) wins over <paramref name="output"/>; both null captures
+        /// every output as one image.
+        /// </summary>
+        public static bool Capture(string output, string region, string destination, out string error)
         {
             string grim = Shell.Which("grim");
             if (grim == null)
@@ -91,7 +95,12 @@ namespace WFInfo.Scan
             }
 
             var arguments = new List<string>();
-            if (!string.IsNullOrEmpty(output))
+            if (!string.IsNullOrEmpty(region))
+            {
+                arguments.Add("-g");
+                arguments.Add(region);
+            }
+            else if (!string.IsNullOrEmpty(output))
             {
                 arguments.Add("-o");
                 arguments.Add(output);
