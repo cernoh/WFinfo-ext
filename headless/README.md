@@ -42,6 +42,10 @@ Exit codes: `0` all passed, `1` partial failures, `2` fatal errors.
 strip, prices every recognised part, shows the best platinum choice as a desktop
 notification, and writes a scan record the dashboard's "Scan" page displays.
 
+The same scan runs from the dashboard: press **Scan now** on its Scan page
+(the server runs the command below with `WFINFO_SCAN_ROOT` set to this
+checkout, and `--no-notify` because the page reports the result).
+
 ```bash
 nix run .#scan                     # capture every output, notify, record
 nix run .#scan -- --refresh        # ignore the price-cache TTL

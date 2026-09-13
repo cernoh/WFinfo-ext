@@ -54,14 +54,31 @@ platinum price and ducats, and the screenshot the prices came from. The page
 refreshes automatically while visible, so a scan triggered by the scan hotkey
 appears without a reload.
 
+Press **Scan now** on that page to start a scan from the browser. The button
+runs the scan command on the machine that hosts the dashboard (it captures that
+machine's screen), then reloads the result and reports how the scan ended.
+Keep the Warframe reward screen visible while it runs.
+
 Scans are produced by the headless scanner:
 
 ```bash
 nix run .#scan
 ```
 
-The dashboard only reads the scan record and screenshot; it never writes to
-the data dir.
+The default command is the flake's scan app at the repository root
+(`nix run <checkout>#scan -- --no-notify`); the first press compiles the runner.
+Set the environment variables below to change that. The board only reads the
+scan record and screenshot; the runner writes them.
+
+| Variable | Effect |
+|---|---|
+| `WFINFO_SCAN_CMD` | Shell command that runs one scan, instead of the default. |
+| `WFINFO_SCAN_ROOT` | Checkout the default command builds the runner from. |
+| `WFINFO_SCAN_REMOTE` | Set to `1` to accept scan requests from another host. Default: loopback only. |
+
+The dashboard has no login. A scan is accepted only from the page itself (no
+cross-site post) and, by default, only from the host that serves the page. Do
+not expose the dashboard to an untrusted network with `WFINFO_SCAN_REMOTE=1`.
 
 ## Checks
 

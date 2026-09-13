@@ -35,7 +35,8 @@ Win32 surfaces are NOT portable and stay Windows-only.
 
 The repo also carries `dashboard/`: a Deno + GOV.UK Frontend web dashboard
 ("Warframe Info", an independent digital service) that presents the local
-WFInfo data — OCR logs, OCR test runs, and cached market prices — in a browser.
+WFInfo data — OCR logs, OCR test runs, and cached market prices — in a browser,
+and can start a reward-screen scan from its Scan page.
 
 ## Ownership
 
@@ -43,7 +44,8 @@ WFInfo data — OCR logs, OCR test runs, and cached market prices — in a brows
   LanguageProcessing/, Services/, Settings/, Tests/). Child: `WFInfo/AGENTS.md`.
 - `headless/` — Linux-native runner project + platform seams. Child: `headless/AGENTS.md`.
 - `dashboard/` — Deno + GOV.UK Frontend web dashboard over local WFInfo data
-  (logs, OCR runs, market DBs). Child: `dashboard/AGENTS.md`.
+  (logs, OCR runs, market DBs), plus the browser-triggered scan button.
+  Child: `dashboard/AGENTS.md`.
 - `tests/` — OCR/theme regression framework docs + scenario data. Child: `tests/AGENTS.md`.
 - `docs/` — GitHub Pages website (has CNAME/index.html; do not drop engineering
   docs into it), owned at root.
@@ -87,7 +89,8 @@ Run inside `nix develop`:
 Dashboard (Deno, also inside `nix develop`):
 
 - `cd dashboard && deno fmt --check && deno check src && deno lint` — static gates.
-- `cd dashboard && deno test -A src` — offline unit tests.
+- `cd dashboard && deno test -A src` — offline unit tests (they include the
+  `/scan/run` scan-button route with a stand-in scan command).
 - `nix flake check` — format/typecheck/unit-test gates in a sandbox.
 - `cd dashboard && deno task dev` — dashboard on http://localhost:8000.
 

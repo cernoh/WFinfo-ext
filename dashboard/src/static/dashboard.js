@@ -5,7 +5,9 @@
  * - Recently seen page: re-fetch /api/reward-events and /api/ocr-runs every
  *   10s and re-render the two card lists.
  * - Scan page: re-fetch /api/scan every 3s and swap in the re-rendered body,
- *   so a hotkey-triggered scan appears without a reload.
+ *   so a hotkey-triggered scan appears without a reload. The page's "Scan now"
+ *   form posts to /scan/run, which starts a real scan; the script keeps the
+ *   button busy until the scan answers and then refreshes the body.
  *
  * Polling pauses while the tab is hidden. All dynamic text is escaped.
  */
@@ -304,6 +306,67 @@
   }
 
   /* ------------------------------------------------------------------ */
+  /* Scan now (the /scan page's form)                                    */
+  /* ------------------------------------------------------------------ */
+
+  function setScanStatus(text, isError) {
+    var status = $("wf-scan-status");
+    if (!status) return;
+    status.hidden = text.length === 0;
+    status.className = isError ? "govuk-body wf-err" : "govuk-body wf-muted";
+    status.textContent = text;
+  }
+
+  function showScanOutput(text) {
+    var log = $("wf-scan-log");
+    if (!log) return;
+    log.hidden = text.length === 0;
+    log.textContent = text;
+  }
+
+  function submitScan(event) {
+    // Without this handler the plain form post still works: it redirects
+    // back to /scan once the scan record is written.
+    event.preventDefault();
+    var form = event.currentTarget;
+    var button = $("wf-scan-button");
+    if (button) button.disabled = true;
+    showScanOutput("");
+    setScanStatus("Scanning the screen… this takes a few seconds.", false);
+
+    fetch(form.action, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+    }).then(function (resp) {
+      return resp.json().catch(function () {
+        return {};
+      }).then(function (data) {
+        if (resp.ok && data.ok) {
+          setScanStatus(data.message || "Scan complete.", false);
+          return;
+        }
+        showScanOutput(data.output || "");
+        setScanStatus(
+          data.message || data.error || "The scan failed (HTTP " + resp.status +
+              ").",
+          true,
+        );
+      });
+    }).catch(function (err) {
+      setScanStatus("The scan request failed: " + err.message, true);
+    }).finally(function () {
+      if (button) button.disabled = false;
+      scheduleScanPoll(0);
+    });
+  }
+
+  function initScanForm() {
+    var form = $("wf-scan-form");
+    if (!form) return;
+    form.addEventListener("submit", submitScan);
+  }
+
+  /* ------------------------------------------------------------------ */
 
   function init() {
     if (window.GOVUKFrontend && GOVUKFrontend.initAll) {
@@ -312,6 +375,7 @@
     initLogs();
     initRecent();
     initScan();
+    initScanForm();
   }
 
   if (document.readyState === "loading") {

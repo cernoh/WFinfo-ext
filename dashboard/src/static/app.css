@@ -249,6 +249,27 @@ a.wf-chip:hover {
 
 /* Scan page ----------------------------------------------------------- */
 
+.wf-scan-form {
+  margin: 20px 0 8px;
+}
+
+.wf-scan-form .govuk-body-s {
+  max-width: 40em;
+}
+
+.wf-scan-log {
+  margin: 8px 0 20px;
+  padding: 12px;
+  max-height: 320px;
+  overflow: auto;
+  background: #f3f2f1;
+  border-left: 5px solid #d4351c;
+  font-family: ui-monospace, "DejaVu Sans Mono", monospace;
+  font-size: 0.8125rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .wf-scan-shot {
   margin: 8px 0 20px;
 }

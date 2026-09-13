@@ -170,9 +170,10 @@ ${pkgs.lib.concatStringsSep "\n" (pkgs.lib.mapAttrsToList (name: value: "export 
 
         dashboard = {
           type = "app";
-          program = toString (pkgs.writeShellScriptBin "wfinfo-dashboard" ''
+          program = "${pkgs.writeShellScriptBin "wfinfo-dashboard" ''
             exec ${pkgs.deno}/bin/deno run -A ${self}/dashboard/src/main.ts "$@"
-          '');
+          ''}/bin/wfinfo-dashboard";
+          meta.description = "Warframe Info dashboard (Deno + GOV.UK Frontend)";
         };
       });
     };
