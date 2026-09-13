@@ -93,6 +93,8 @@ Dashboard (Deno, also inside `nix develop`):
   `/scan/run` scan-button route with a stand-in scan command).
 - `nix flake check` — format/typecheck/unit-test gates in a sandbox.
 - `cd dashboard && deno task dev` — dashboard on http://localhost:8000.
+- `nix run .#dev-all` — dashboard live reload plus the headless backend rebuilt
+  and re-run (reward-screen scan) on every backend edit. Ctrl-C stops both.
 
 The Windows build cannot be verified on Linux; keep shared-code edits
 Windows-equivalent (Path.Combine semantics) and compile-check them here.

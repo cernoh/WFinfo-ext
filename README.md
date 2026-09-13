@@ -1,4 +1,127 @@
-﻿[![Supported by the Warframe Community Developers](https://img.shields.io/badge/Warframe_Comm_Devs-supported-blue.svg?color=2E96EF&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyOTgiIGhlaWdodD0iMTczIiB2aWV3Qm94PSIwIDAgMjk4IDE3MyI%2BPHBhdGggZD0iTTE4NSA2N2MxNSA4IDI4IDE2IDMxIDE5czIzIDE4LTcgNjBjMCAwIDM1LTMxIDI2LTc5LTE0LTctNjItMzYtNzAtNDUtNC01LTEwLTEyLTE1LTIyLTUgMTAtOSAxNC0xNSAyMi0xMyAxMy01OCAzOC03MiA0NS05IDQ4IDI2IDc5IDI2IDc5LTMwLTQyLTEwLTU3LTctNjBsMzEtMTkgMzYtMjIgMzYgMjJ6TTU1IDE3M2wtMTctM2MtOC0xOS0yMC00NC0yNC01MC01LTctNy0xMS0xNC0xNWwxOC0yYzE2LTMgMjItNyAzMi0xMyAxIDYgMCA5IDIgMTQtNiA0LTIxIDEwLTI0IDE2IDMgMTQgNSAyNyAyNyA1M3ptMTYtMTFsLTktMi0xNC0yOWEzMCAzMCAwIDAgMC04LThoN2wxMy00IDQgN2MtMyAyLTcgMy04IDZhODYgODYgMCAwIDAgMTUgMzB6bTE3MiAxMWwxNy0zYzgtMTkgMjAtNDQgMjQtNTAgNS03IDctMTEgMTQtMTVsLTE4LTJjLTE2LTMtMjItNy0zMi0xMy0xIDYgMCA5LTIgMTQgNiA0IDIxIDEwIDI0IDE2LTMgMTQtNSAyNy0yNyA1M3ptLTE2LTExbDktMiAxNC0yOWEzMCAzMCAwIDAgMSA4LThoLTdsLTEzLTQtNCA3YzMgMiA3IDMgOCA2YTg2IDg2IDAgMCAxLTE1IDMwem0tNzktNDBsLTYtNmMtMSAzLTMgNi02IDdsNSA1YTUgNSAwIDAgMSAyIDB6bS0xMy0yYTQgNCAwIDAgMSAxLTJsMi0yYTQgNCAwIDAgMSAyLTFsNC0xNy0xNy0xMC04IDcgMTMgOC0yIDctNyAyLTgtMTItOCA4IDEwIDE3em0xMiAxMWE1IDUgMCAwIDAtNC0yIDQgNCAwIDAgMC0zIDFsLTMwIDI3YTUgNSAwIDAgMCAwIDdsNCA0YTYgNiAwIDAgMCA0IDIgNSA1IDAgMCAwIDMtMWwyNy0zMWMyLTIgMS01LTEtN3ptMzkgMjZsLTMwLTI4LTYgNmE1IDUgMCAwIDEgMCAzbDI2IDI5YTEgMSAwIDAgMCAxIDBsNS0yIDItMmMxLTIgMy01IDItNnptNS00NWEyIDIgMCAwIDAtNCAwbC0xIDEtMi00YzEtMy01LTktNS05LTEzLTE0LTIzLTE0LTI3LTEzLTIgMS0yIDEgMCAyIDE0IDIgMTUgMTAgMTMgMTNhNCA0IDAgMCAwLTEgMyAzIDMgMCAwIDAgMSAxbC0yMSAyMmE3IDcgMCAwIDEgNCAyIDggOCAwIDAgMSAyIDNsMjAtMjFhNyA3IDAgMCAwIDEgMSA0IDQgMCAwIDAgNCAwYzEtMSA2IDMgNyA0aC0xYTMgMyAwIDAgMCAwIDQgMiAyIDAgMCAwIDQgMGw2LTZhMyAzIDAgMCAwIDAtM3oiIGZpbGw9IiMyZTk2ZWYiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvc3ZnPg%3D%3D)](https://github.com/WFCD/banner/blob/master/PROJECTS.md)
+# WFInfo — Linux and Nix development
+
+WFInfo is a Windows desktop app. The platform-neutral core of WFInfo (OCR
+pipeline, theme detection, market data, regression tests) also builds and runs
+natively on Linux through the Nix flake in this repository. No code forks and no
+mocks: the Linux runner executes the production pipelines.
+
+## Development shell
+
+The flake needs Nix with flakes enabled.
+
+```bash
+git clone git@github.com:cernoh/WFinfo-ext.git
+cd WFinfo-ext
+nix develop
+```
+
+The shell has the .NET 9 SDK, the native Tesseract and Leptonica libraries,
+`libgdiplus`, DejaVu fonts, and Deno. It also sets the environment variables that
+the .NET OCR stack reads on Linux.
+
+## Headless OCR and theme runner
+
+`headless/` is a .NET 9 console runner. It links the real WFInfo core sources
+and runs them without WPF, WinForms, or Win32.
+
+```bash
+nix develop
+dotnet build headless/WFInfo.Headless.csproj
+dotnet run --project headless -- --selfcheck
+dotnet run --project headless -- --test tests/map.json out.json
+dotnet run --project headless -- --theme-test <folder-with-pngs>
+```
+
+`--selfcheck` renders sample text and OCRs it. It proves that the native
+libraries, the tessdata files, and the imaging path all work.
+
+Every `--test` run also writes its results to `<data dir>/WFInfo/ocr_runs/`.
+
+## Reward-screen scan
+
+`--scan` reads the screen, runs the production OCR pipeline over the reward
+strip, prices each part, and reports the best platinum choice.
+
+```bash
+nix run .#scan                     # capture the screen, notify, write a record
+nix run .#scan -- --refresh        # ignore the price-cache lifetime
+nix run .#scan -- --file shot.png  # price an existing screenshot
+nix run .#scan -- --json           # print the scan record to stdout
+```
+
+Each run does this:
+
+1. Captures the screen with `grim` for each Wayland output.
+
+2. OCRs the reward strip and corrects each name against `market_items.json`.
+
+3. Prices each part from the local cache. Missing or stale prices come from the
+   warframe.market statistics endpoint in parallel. The market sheet is the
+   offline fallback, so a network fault does not stop the scan.
+
+4. Shows the best platinum choice in a desktop notification.
+
+5. Writes the record to `<data dir>/WFInfo/scans/latest.json`.
+
+Bind the scan to a key in your window manager. Example for mango or dwl:
+
+```
+None,Print,spawn_shell,nix run /path/to/WFinfo-ext#scan
+```
+
+The complete option list and the record schema are in `headless/README.md`.
+
+## Warframe Info dashboard
+
+`dashboard/` is a Deno web server. It shows the WFInfo logs, the OCR runs, the
+cached market prices, and the newest scan in a browser. The pages use the GOV.UK
+Design System.
+
+```bash
+nix run .#dashboard           # dashboard on http://localhost:8000 (store copy)
+nix run .#dev                 # live-reload server (working tree)
+cd dashboard && deno task dev # live-reload server inside `nix develop`
+```
+
+### Frontend and backend together
+
+`nix run .#dev-all` runs the dashboard with live reload and the headless backend
+in one terminal. The backend rebuilds and runs a reward-screen scan again after
+every edit under `headless/`, so the Scan page shows the new result. Press
+Ctrl-C to stop both.
+
+```bash
+nix run .#dev-all                              # dashboard + scan-on-edit backend
+nix run .#dev-all -- --file docs/images/window.png # extra arguments go to the scan
+```
+
+The dev stack turns notifications off, because one notification per edit is
+noise. Use `nix run .#scan` for the notifying path.
+
+The dashboard reads the WFInfo data directory and never writes to it. On Linux
+the data directory is `~/.config/WFInfo`.
+
+## Checks
+
+```bash
+nix flake check              # format, typecheck, and unit tests in a sandbox
+nix build .#tesseract-native # native-library output, for use in CI
+```
+
+## Environment
+
+- `WFINFO_DATA_DIR` — application-data root. The default is the XDG config
+  directory.
+- `WFINFO_NATIVE_LIBS` — directory that holds `libtesseract50.so` and
+  `libleptonica-1.82.0.so`. The dev shell sets this.
+
+See `headless/README.md` and `dashboard/README.md` for the full details.
+
+---
+
+# Original WFInfo README
+
+[![Supported by the Warframe Community Developers](https://img.shields.io/badge/Warframe_Comm_Devs-supported-blue.svg?color=2E96EF&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyOTgiIGhlaWdodD0iMTczIiB2aWV3Qm94PSIwIDAgMjk4IDE3MyI%2BPHBhdGggZD0iTTE4NSA2N2MxNSA4IDI4IDE2IDMxIDE5czIzIDE4LTcgNjBjMCAwIDM1LTMxIDI2LTc5LTE0LTctNjItMzYtNzAtNDUtNC01LTEwLTEyLTE1LTIyLTUgMTAtOSAxNC0xNSAyMi0xMyAxMy01OCAzOC03MiA0NS05IDQ4IDI2IDc5IDI2IDc5LTMwLTQyLTEwLTU3LTctNjBsMzEtMTkgMzYtMjIgMzYgMjJ6TTU1IDE3M2wtMTctM2MtOC0xOS0yMC00NC0yNC01MC01LTctNy0xMS0xNC0xNWwxOC0yYzE2LTMgMjItNyAzMi0xMyAxIDYgMCA5IDIgMTQtNiA0LTIxIDEwLTI0IDE2IDMgMTQgNSAyNyAyNyA1M3ptMTYtMTFsLTktMi0xNC0yOWEzMCAzMCAwIDAgMC04LThoN2wxMy00IDQgN2MtMyAyLTcgMy04IDZhODYgODYgMCAwIDAgMTUgMzB6bTE3MiAxMWwxNy0zYzgtMTkgMjAtNDQgMjQtNTAgNS03IDctMTEgMTQtMTVsLTE4LTJjLTE2LTMtMjItNy0zMi0xMy0xIDYgMCA5LTIgMTQgNiA0IDIxIDEwIDI0IDE2LTMgMTQtNSAyNy0yNyA1M3ptLTE2LTExbDktMiAxNC0yOWEzMCAzMCAwIDAgMSA4LThoLTdsLTEzLTQtNCA3YzMgMiA3IDMgOCA2YTg2IDg2IDAgMCAxLTE1IDMwem0tNzktNDBsLTYtNmMtMSAzLTMgNi02IDdsNSA1YTUgNSAwIDAgMSAyIDB6bS0xMy0yYTQgNCAwIDAgMSAxLTJsMi0yYTQgNCAwIDAgMSAyLTFsNC0xNy0xNy0xMC04IDcgMTMgOC0yIDctNyAyLTgtMTItOCA4IDEwIDE3em0xMiAxMWE1IDUgMCAwIDAtNC0yIDQgNCAwIDAgMC0zIDFsLTMwIDI3YTUgNSAwIDAgMCAwIDdsNCA0YTYgNiAwIDAgMCA0IDIgNSA1IDAgMCAwIDMtMWwyNy0zMWMyLTIgMS01LTEtN3ptMzkgMjZsLTMwLTI4LTYgNmE1IDUgMCAwIDEgMCAzbDI2IDI5YTEgMSAwIDAgMCAxIDBsNS0yIDItMmMxLTIgMy01IDItNnptNS00NWEyIDIgMCAwIDAtNCAwbC0xIDEtMi00YzEtMy01LTktNS05LTEzLTE0LTIzLTE0LTI3LTEzLTIgMS0yIDEgMCAyIDE0IDIgMTUgMTAgMTMgMTNhNCA0IDAgMCAwLTEgMyAzIDMgMCAwIDAgMSAxbC0yMSAyMmE3IDcgMCAwIDEgNCAyIDggOCAwIDAgMSAyIDNsMjAtMjFhNyA3IDAgMCAwIDEgMSA0IDQgMCAwIDAgNCAwYzEtMSA2IDMgNyA0aC0xYTMgMyAwIDAgMCAwIDQgMiAyIDAgMCAwIDQgMGw2LTZhMyAzIDAgMCAwIDAtM3oiIGZpbGw9IiMyZTk2ZWYiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvc3ZnPg%3D%3D)](https://github.com/WFCD/banner/blob/master/PROJECTS.md)
 
 # Description
 
@@ -7,19 +130,6 @@ WFInfo is a companion app for Warframe, based on the [original](https://github.c
 WFinfo is designed to provide quick access to both Platinum and Ducat prices for all fissure rewards to make selecting the best reward easy.
 
 WFInfo does this by screenshotting the game window, cropping out the part text, then passing it to an Optical Character Recognition Engine, specifically Google's Tesseract. The OCR Engine will then send back the text it found, and we will pull out the part name from that text. From there, we display the stats for each part in an overlay or on a separate window.
-
-> **Linux development.** The Windows GUI is .NET Framework 4.8 + WPF and cannot run
-> on Linux, but the platform-neutral core (OCR pipeline, theme detection, market
-> data, regression tests) builds and runs natively on Linux through the Nix flake:
-> `nix develop`, then
-> `dotnet run --project headless -- --selfcheck` (see `headless/README.md`).
->
-> The Linux runner can also scan a live reward screen: `nix run .#scan` captures
-> the screen, OCRs the rewards, prices every part from a local cache (fetched
-> from warframe.market), posts the best platinum choice as a desktop
-> notification and writes the result for the Warframe Info dashboard. Bind it to
-> a key in your window manager — `None,Print,spawn_shell,nix run
-> /path/to/WFinfo-ext#scan`.
 
 # Usage
 1. Download the [latest release](https://github.com/WFCD/WFinfo/releases/latest)
