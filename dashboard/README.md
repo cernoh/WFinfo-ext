@@ -70,6 +70,21 @@ runs the scan command on the machine that hosts the dashboard (it captures that
 machine's screen), then reloads the result and reports how the scan ended.
 Keep the Warframe reward screen visible while it runs.
 
+Above the button, two lists pick what the scan captures:
+
+- **Display** — the monitor to capture (`grim -o <name>`), from `wlr-randr`.
+  Leave it on *Every output (automatic)* to let the scanner try each output.
+- **Window** — capture one window's frame instead of a whole display
+  (`grim -g "X,Y WxH"`), from the compositor's client list. A chosen window
+  wins over the display. Window geometry comes from mango IPC (`mmsg get
+  all-clients`); under another compositor the list stays empty and the display
+  choice still works.
+
+**Refresh lists** re-reads both lists, so a window that just opened (Warframe,
+for example) appears without a page reload. The choice is resolved when the
+scan starts: a window that closed in the meantime is reported, and no scan
+runs.
+
 Scans are produced by the headless scanner:
 
 ```bash

@@ -26,6 +26,10 @@ code type-checks without WPF/WinForms/Win32.
   `ScanModels.cs`/`ScanOptions.cs`/`Shell.cs`. The record shape is a contract
   with the dashboard's Scan page: the field list is in `README.md` (Scan) and
   the reader is `dashboard/src/lib/scan.ts` — change both together.
+- The scan captures one image per candidate: `--file` (an image on disk),
+  `--region "X,Y WxH"` (one layout region, i.e. a window frame), `--output`
+  (one monitor), else every output then the joined image. Region coordinates are
+  the compositor's own client geometry, so no conversion is needed.
 - `Platform/` — seams ONLY: `HeadlessMain.cs` (stub `Main`), `HeadlessServices.cs`
   (window-info service, process finder, screenshot/log-capture stubs,
   `CustomEntrypoint` helpers), `UiSurrogates.cs` (WPF window shapes),
@@ -84,9 +88,11 @@ code type-checks without WPF/WinForms/Win32.
   the checkout, then captures every output) or, inside the dev shell,
   `dotnet run --project headless -- --scan --no-notify`. Use `--file <png>` to
   price an existing screenshot without capturing, `--output <monitor>` to pin a
-  single monitor and `--json` to print the record. A reward screen is only
-  available while the game shows one — verify the plumbing with `--file` and the
-  capture path with a plain `--scan` on any desktop.
+  single monitor, `--region "X,Y WxH"` to pin one window frame in layout
+  coordinates (what the dashboard sends for a chosen window) and `--json` to
+  print the record. A reward screen is only available while the game shows one
+  — verify the plumbing with `--file` and the capture path with a plain
+  `--scan` on any desktop.
 
 ## Verification
 

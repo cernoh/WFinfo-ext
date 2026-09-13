@@ -33,6 +33,11 @@ export interface ScannerOptions {
   timeoutMs?: number;
 }
 
+/** POSIX single-quote a value for the shell command line. */
+function quoteArg(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
 export class Scanner {
   readonly command: string;
   readonly timeoutMs: number;
@@ -49,22 +54,26 @@ export class Scanner {
   }
 
   /**
-   * Run one scan. Callers test `busy` first: two runs at once would capture
-   * the screen twice and race on the scan record.
+   * Run one scan with extra command-line arguments (for example
+   * `["--region", "10,44 1900x1026"]`). Callers test `busy` first: two runs at
+   * once would capture the screen twice and race on the scan record.
    */
-  run(): Promise<ScanOutcome> {
+  run(extraArgs: string[] = []): Promise<ScanOutcome> {
     if (this.#running !== null) {
       throw new Error("a scan is already running");
     }
     const startedMs = Date.now();
-    const running = this.#execute(startedMs).finally(() => {
+    const command = extraArgs.length === 0
+      ? this.command
+      : `${this.command} ${extraArgs.map(quoteArg).join(" ")}`;
+    const running = this.#execute(startedMs, command).finally(() => {
       this.#running = null;
     });
     this.#running = running;
     return running;
   }
 
-  async #execute(startedMs: number): Promise<ScanOutcome> {
+  async #execute(startedMs: number, command: string): Promise<ScanOutcome> {
     const outcome = (
       status: ScanStatus,
       exitCode: number | null,
@@ -84,7 +93,7 @@ export class Scanner {
     let child: Deno.ChildProcess;
     try {
       child = new Deno.Command("sh", {
-        args: ["-c", this.command],
+        args: ["-c", command],
         stdin: "null",
         stdout: "piped",
         stderr: "piped",

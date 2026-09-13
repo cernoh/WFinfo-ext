@@ -257,6 +257,11 @@ a.wf-chip:hover {
   max-width: 40em;
 }
 
+.wf-scan-form .govuk-select {
+  max-width: 40em;
+  width: 100%;
+}
+
 .wf-scan-log {
   margin: 8px 0 20px;
   padding: 12px;

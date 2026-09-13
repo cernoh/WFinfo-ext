@@ -15,11 +15,15 @@ and reports the outcome. It is an "independent digital service" (see
 - `deno.json` — tasks (`start`, `dev`, `check`, `test`, `fmt`, `lint`) and
   fmt/lint exclusions (AGENTS.md, README.md, `src/static`).
 - `src/main.ts` — HTTP server: routing (including `/scan`, `POST /scan/run`,
-  `/api/scan` and `/scan/screenshot`), env config (`PORT`, `WFINFO_DATA_DIR`,
-  `WFINFO_GOVUK_DIR`, `WFINFO_CACHE_DIR`, `WFINFO_SCAN_CMD`,
+  `/api/scan`, `/api/scan/targets` and `/scan/screenshot`), env config (`PORT`,
+  `WFINFO_DATA_DIR`, `WFINFO_GOVUK_DIR`, `WFINFO_CACHE_DIR`, `WFINFO_SCAN_CMD`,
   `WFINFO_SCAN_ROOT`, `WFINFO_SCAN_REMOTE`), file reading, API endpoints.
-- `src/lib/scanner.ts` — one scan run at a time: spawn the configured command,
-  kill it at the deadline, report status/exit code/output.
+- `src/lib/scanner.ts` — one scan run at a time: spawn the configured command
+  with the per-run capture arguments, kill it at the deadline, report
+  status/exit code/output.
+- `src/lib/targets.ts` — what a scan can capture on this host: `wlr-randr`
+  displays, `mmsg get all-clients` window frames (mango IPC), `wlrctl toplevel
+  list` names as a fallback, and the choice → `--output`/`--region` mapping.
 - `src/lib/fsdata.ts` — app-data dir resolution (mirrors headless
   `ConfigureEnvironment`), `debug.log` tail/parse helpers, OCR suite-result
   parsing.
@@ -65,6 +69,15 @@ and reports the outcome. It is an "independent digital service" (see
   `409`, never queued — two runs would capture the screen twice and race on the
   scan record. A run past its deadline (180 s) is killed and reported as
   `timeout`.
+- The Scan page offers the host's displays and windows, and the choice is
+  resolved on the server: the form carries an output name (`display:DP-2`) or a
+  client id (`window:7`), and `src/lib/targets.ts` turns it into `--output` or
+  `--region` from the geometry the compositor reports *now*. A token the
+  discovery does not know is refused (`400`), never substituted; an empty
+  choice runs the command with no capture argument (the runner then tries every
+  output). Target discovery is read-only, best-effort and memoised for 3 s:
+  a missing `wlr-randr`/`mmsg` shortens the list and adds a note, it never
+  fails the page.
 - The route is a POST and is loopback-only: a cross-site post is refused, and a
   request from another host needs `WFINFO_SCAN_REMOTE=1`. The dashboard has no
   authentication; a scan captures the screen of the host that runs it.

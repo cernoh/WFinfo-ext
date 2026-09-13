@@ -77,7 +77,7 @@ namespace WFInfo.Scan
             {
                 if (candidate.Kind == "grim")
                 {
-                    if (!ScreenCapture.Capture(candidate.Target, candidate.Path, out string captureError))
+                    if (!ScreenCapture.Capture(candidate.Output, candidate.Region, candidate.Path, out string captureError))
                     {
                         lastError = captureError;
                         continue;
@@ -103,7 +103,7 @@ namespace WFInfo.Scan
                     acceptedIsTemporary = candidate.Kind == "grim";
                     acceptedTarget = candidate.Kind == "file"
                         ? candidate.Path
-                        : (string.IsNullOrEmpty(candidate.Target) ? "all" : candidate.Target);
+                        : candidate.Label;
                     acceptedParts = parts;
                     acceptedTheme = themeUsed;
                     acceptedThemeWeight = themeWeight;
@@ -161,10 +161,12 @@ namespace WFInfo.Scan
         }
 
         /// <summary>
-        /// Screens to try: the given file, a chosen output, or every output
-        /// before the joined (all outputs) capture. The joined image puts the
-        /// reward strip off-center whenever monitors sit side by side, so it is
-        /// only a fallback — and the last resort when wlr-randr is unavailable.
+        /// Screens to try: the given file, a chosen region, a chosen output, or
+        /// every output before the joined (all outputs) capture. The joined
+        /// image puts the reward strip off-center whenever monitors sit side by
+        /// side, so it is only a fallback — and the last resort when wlr-randr
+        /// is unavailable. A file or a region is a single candidate: the caller
+        /// asked for exactly that image.
         /// </summary>
         private List<CaptureCandidate> BuildCandidates()
         {
@@ -173,23 +175,41 @@ namespace WFInfo.Scan
             if (_options.File != null)
             {
                 string path = Path.GetFullPath(_options.File);
-                candidates.Add(new CaptureCandidate("file", path, path));
+                candidates.Add(new CaptureCandidate("file", null, null, path, path));
                 return candidates;
             }
 
             string directory = Path.Combine(Path.GetTempPath(), "wfinfo-scan-" + Environment.ProcessId);
             Directory.CreateDirectory(directory);
 
+            if (!string.IsNullOrEmpty(_options.Region))
+            {
+                candidates.Add(new CaptureCandidate(
+                    "grim", null, _options.Region,
+                    Path.Combine(directory, "region-" + SafeName(_options.Region) + ".png"),
+                    _options.Region));
+                return candidates;
+            }
+
             if (!string.IsNullOrEmpty(_options.Output))
             {
-                candidates.Add(new CaptureCandidate("grim", _options.Output, Path.Combine(directory, SafeName(_options.Output) + ".png")));
+                candidates.Add(new CaptureCandidate(
+                    "grim", _options.Output, null,
+                    Path.Combine(directory, SafeName(_options.Output) + ".png"),
+                    _options.Output));
                 return candidates;
             }
 
             foreach (string output in ScreenCapture.ListOutputs())
-                candidates.Add(new CaptureCandidate("grim", output, Path.Combine(directory, SafeName(output) + ".png")));
+            {
+                candidates.Add(new CaptureCandidate(
+                    "grim", output, null,
+                    Path.Combine(directory, SafeName(output) + ".png"),
+                    output));
+            }
 
-            candidates.Add(new CaptureCandidate("grim", null, Path.Combine(directory, "all-outputs.png")));
+            candidates.Add(new CaptureCandidate(
+                "grim", null, null, Path.Combine(directory, "all-outputs.png"), "all"));
             return candidates;
         }
 
@@ -520,21 +540,29 @@ namespace WFInfo.Scan
 
         private readonly struct CaptureCandidate
         {
-            public CaptureCandidate(string kind, string target, string path)
+            public CaptureCandidate(string kind, string output, string region, string path, string label)
             {
                 Kind = kind;
-                Target = target;
+                Output = output;
+                Region = region;
                 Path = path;
+                Label = label;
             }
 
             /// <summary>"grim" (capture now) or "file" (already on disk).</summary>
             public string Kind { get; }
 
-            /// <summary>grim output name; null means every output.</summary>
-            public string Target { get; }
+            /// <summary>grim -o output name; null means the whole layout.</summary>
+            public string Output { get; }
+
+            /// <summary>grim -g region ("X,Y WxH"); null means an output capture.</summary>
+            public string Region { get; }
 
             /// <summary>PNG to capture into, or the file to read.</summary>
             public string Path { get; }
+
+            /// <summary>What the scan record reports as the capture target.</summary>
+            public string Label { get; }
         }
     }
 }
